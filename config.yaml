@@ -4,7 +4,7 @@ seed: 42
 
 paths:
   raw: data/raw
-  sackmann_dir: data/raw/tennis_atp
+  sackmann_dir: data/raw/tennis_atp/tennis-sackmann-archive-main/atp   # archive mirror (DECISIONS D-007)
   tml_dir: data/raw/tml
   odds_dir: data/raw/odds
   interim: data/interim
@@ -21,13 +21,13 @@ paths:
 
 data:
   first_year: 1990          # earliest season loaded (state warm-up)
-  last_sackmann_year: 2024  # Sackmann covers through this year
+  last_sackmann_year: 2026  # the archive covers through Roland Garros 2026 (early June 2026)
   feature_first_year: 2000  # rows of features.parquet start here (state still built from first_year)
   include_qual_chall: true  # load atp_matches_qual_chall_YYYY.csv (Challengers + qualifying update state)
   include_futures: false    # ITF/satellite files are not loaded
   training_levels: [A, G, M, F, D, O]
   qualifying_rounds: [Q1, Q2, Q3, Q4]
-  round_order: [Q1, Q2, Q3, Q4, R128, R64, R32, R16, RR, QF, SF, BR, F]
+  round_order: [Q1, Q2, Q3, Q4, R128, R64, R32, R16, ER, RR, QF, SF, BR, F]   # ER: 2007 RR-experiment elimination round (D-013)
   surface_map: {Hard: Hard, Clay: Clay, Grass: Grass, Carpet: Hard}
   source_priority: [sackmann, tml, scraped]
 
@@ -37,6 +37,7 @@ cleaning:
   retirement_updates_stats: true    # partial stats from RET/DEF may enter rolling buffers
   retirement_updates_h2h: false     # assumption: an unfinished match is not an H2H win (logged in DECISIONS.md)
   retirement_updates_form: false    # assumption: an unfinished match is not a win/loss for last_k_winrate
+  drop_conflicting_results: true    # D-014: drop both rows when one meeting is recorded twice with opposite winners
 
 elo:
   start_rating: 1500.0
@@ -55,7 +56,11 @@ elo:
     base_k: 0.0
     max_k: 100.0
     bonus_after_layoff: false
-  m_mode: constant          # 'constant' or 'event_matches_so_far' (never anything that looks ahead)
+  # m used in K = div_number / (Ne + m):
+  #   event_matches_so_far -> m = elo.<which>.m + matches the player has ALREADY played in this tourney_id (D-008)
+  #   constant             -> m = elo.<which>.m
+  # Never anything that depends on how far the player goes in the event.
+  m_mode: event_matches_so_far
   layoff:
     threshold_days: 100
     min_gaps: 15            # bonus only applies when there are more than this many gaps
@@ -131,6 +136,7 @@ evaluation:
 
 leakage_tests:
   slow_recompute_samples: 200
+  real_start_year: 2018     # real-data engine tests (1, 2, 4) use matches from this year on as their whole input
   shuffled_label_band: [0.47, 0.53]
   label_mean_band: [0.48, 0.52]
 

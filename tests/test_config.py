@@ -10,9 +10,10 @@ def test_config_loads_with_required_sections() -> None:
 
 
 def test_round_order_matches_plan() -> None:
+    """PLAN §2 rule 2 order, plus ER (2007 elimination round) between R16 and RR (DECISIONS D-013)."""
     cfg = load_config()
     assert cfg["data"]["round_order"] == [
-        "Q1", "Q2", "Q3", "Q4", "R128", "R64", "R32", "R16", "RR", "QF", "SF", "BR", "F",
+        "Q1", "Q2", "Q3", "Q4", "R128", "R64", "R32", "R16", "ER", "RR", "QF", "SF", "BR", "F",
     ]
 
 

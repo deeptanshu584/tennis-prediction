@@ -43,4 +43,4 @@
 **Tests:** `pytest -q` → 169 passed, 32 skipped. Every skip names a target not built yet: engine (Phase 2), splits
 (Phase 3), features.parquet, `cfg.model.features`, or no experiment logs. Leakage test 5 (duplicates) and test 0
 pass on the real data; test 7 passes.
-**Open issues:** 2026 H2 data for Phase 7 (to raise at Phase 3/7).
+**Open issues:** 2026 H2 data for Phase 7 → resolved by the human: shortened forward test, Apr–early Jun 2026 (D-017).

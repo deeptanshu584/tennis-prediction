@@ -103,13 +103,17 @@ splits:
     val_end: "2025-06-29"     # day before Wimbledon 2025 (main draw started 2025-06-30)
     test_tourney: "Wimbledon"
     test_year: 2025
-  # Split B: forward test
+  # Split B: shortened forward test (human decision, DECISIONS D-017). The archive ends early June 2026, with no
+  # June-November 2026 data and nothing to be downloaded or scraped for it. test_end is pinned so the test set
+  # can't silently grow if data is added later.
   forward:
     train_start: "2000-01-01"
     train_end: "2025-12-31"
     val_start: "2026-01-01"
-    val_end: "2026-06-30"
-    test_start: "2026-07-01"
+    val_end: "2026-03-31"
+    test_start: "2026-04-01"
+    test_end: "2026-06-07"          # end of archive data (last tourney_date 2026-06-01; Roland Garros 2026 final 7 Jun)
+    report_tourneys: ["Roland Garros"]   # reported separately with bootstrap CIs
 
 xgb:
   objective: "binary:logistic"
@@ -142,3 +146,114 @@ leakage_tests:
 
 scraping:
   min_seconds_between_requests: 3.0
+
+# Model input allow-list (CONTRACT section 5). Exact column names; nothing else is ever a model input.
+# Generated from the CONTRACT section 2 player features (a_/b_/d_) plus context columns.
+model:
+  features:
+    - a_elo
+    - b_elo
+    - d_elo
+    - a_elo_surface
+    - b_elo_surface
+    - d_elo_surface
+    - a_elo_grad
+    - b_elo_grad
+    - d_elo_grad
+    - a_matches_played
+    - b_matches_played
+    - d_matches_played
+    - a_matches_surface_played
+    - b_matches_surface_played
+    - d_matches_surface_played
+    - a_winrate_last_5
+    - b_winrate_last_5
+    - d_winrate_last_5
+    - a_winrate_last_10
+    - b_winrate_last_10
+    - d_winrate_last_10
+    - a_winrate_last_50
+    - b_winrate_last_50
+    - d_winrate_last_50
+    - a_h2h_wins
+    - b_h2h_wins
+    - d_h2h_wins
+    - a_h2h_surface_wins
+    - b_h2h_surface_wins
+    - d_h2h_surface_wins
+    - a_n_stat_matches
+    - b_n_stat_matches
+    - d_n_stat_matches
+    - a_p_ace
+    - b_p_ace
+    - d_p_ace
+    - a_p_df
+    - b_p_df
+    - d_p_df
+    - a_p_1stIn
+    - b_p_1stIn
+    - d_p_1stIn
+    - a_p_1stWon
+    - b_p_1stWon
+    - d_p_1stWon
+    - a_p_2ndWon
+    - b_p_2ndWon
+    - d_p_2ndWon
+    - a_p_bpSaved
+    - b_p_bpSaved
+    - d_p_bpSaved
+    - a_p_rpw
+    - b_p_rpw
+    - d_p_rpw
+    - a_p_retAceAgainst
+    - b_p_retAceAgainst
+    - d_p_retAceAgainst
+    - a_p_ret1stWon
+    - b_p_ret1stWon
+    - d_p_ret1stWon
+    - a_p_ret2ndWon
+    - b_p_ret2ndWon
+    - d_p_ret2ndWon
+    - a_p_bpConv
+    - b_p_bpConv
+    - d_p_bpConv
+    - a_p_totalPtsWon
+    - b_p_totalPtsWon
+    - d_p_totalPtsWon
+    - a_dominance_ratio
+    - b_dominance_ratio
+    - d_dominance_ratio
+    - a_rank
+    - b_rank
+    - d_rank
+    - a_rank_points
+    - b_rank_points
+    - d_rank_points
+    - a_age
+    - b_age
+    - d_age
+    - a_height
+    - b_height
+    - d_height
+    - a_is_left
+    - b_is_left
+    - d_is_left
+    - a_days_since_last_match
+    - b_days_since_last_match
+    - d_days_since_last_match
+    - a_matches_last_14_days
+    - b_matches_last_14_days
+    - d_matches_last_14_days
+    - surface_Hard
+    - surface_Clay
+    - surface_Grass
+    - level_A
+    - level_G
+    - level_M
+    - level_F
+    - level_D
+    - level_O
+    - round_rank
+    - best_of
+    - elo_prob_a
+    - elo_surface_prob_a

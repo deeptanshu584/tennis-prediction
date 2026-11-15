@@ -126,3 +126,16 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   (D-014) is fixed and test 5 now passes on real data. The Phase 2 audit, run by a fresh auditor, will re-check
   the unified table along with the engine.
 - **Why:** Phase 1 produced no features, splits or models; a second auditor would rerun the same checks.
+
+### D-017 (2026-11-16, Phase 7 plan) — Shortened forward test (human decision)
+- **Decision:** split B = train 2000-01-01 → 2025-12-31 · validate 2026-01-01 → 2026-03-31 · test 2026-04-01 → end of the
+  archive data (`test_end: 2026-06-07`; last tourney_date in the data is 2026-06-01, ending with Roland Garros 2026).
+  Report test results overall and for Roland Garros 2026 separately, each with 95% bootstrap CIs. Flag the small sample.
+- **Sizes (training-level, non-walkover, non-retirement rows, counted 2026-11-16):** validation 932 matches; test **473**
+  matches, of which Roland Garros 2026 is 118. The human estimated about 600–800; the real test set is smaller, so CIs
+  will be wide (roughly ±4.5 pts overall, ±9 pts for Roland Garros).
+- **Constraints:** no scraping or downloading of June–November 2026 data. The human may ask for it later if the Phase 7
+  results look good. `test_end` is pinned so added data can't silently enter the test set.
+- **Alternatives:** the plan's 2026 H2 test (no data); scraping tennisabstract (not approved); dropping Phase 7.
+- **Why:** the archive (D-007) ends in early June 2026. This keeps a true out-of-sample forward test while honouring the
+  no-download instruction. Phase 7 re-tuning (≤ 300 trials) uses only the Q1-2026 validation window.

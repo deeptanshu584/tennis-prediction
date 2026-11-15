@@ -1,0 +1,138 @@
+# All tunable numbers live here. Change values only through the orchestrator; log changes in DECISIONS.md.
+
+seed: 42
+
+paths:
+  raw: data/raw
+  sackmann_dir: data/raw/tennis_atp
+  tml_dir: data/raw/tml
+  odds_dir: data/raw/odds
+  interim: data/interim
+  processed: data/processed
+  matches: data/interim/matches.parquet
+  player_map: data/interim/player_map.csv
+  player_overrides: config/player_overrides.csv
+  odds: data/interim/odds.parquet
+  features: data/processed/features.parquet
+  models: models
+  experiments: experiments
+  reports: reports
+  figures: reports/figures
+
+data:
+  first_year: 1990          # earliest season loaded (state warm-up)
+  last_sackmann_year: 2024  # Sackmann covers through this year
+  feature_first_year: 2000  # rows of features.parquet start here (state still built from first_year)
+  include_qual_chall: true  # load atp_matches_qual_chall_YYYY.csv (Challengers + qualifying update state)
+  include_futures: false    # ITF/satellite files are not loaded
+  training_levels: [A, G, M, F, D, O]
+  qualifying_rounds: [Q1, Q2, Q3, Q4]
+  round_order: [Q1, Q2, Q3, Q4, R128, R64, R32, R16, RR, QF, SF, BR, F]
+  surface_map: {Hard: Hard, Clay: Clay, Grass: Grass, Carpet: Hard}
+  source_priority: [sackmann, tml, scraped]
+
+cleaning:
+  drop_walkovers: true
+  retirement_updates_elo: false     # RET/DEF matches do not move Elo (default per PLAN section 2 rule 7)
+  retirement_updates_stats: true    # partial stats from RET/DEF may enter rolling buffers
+  retirement_updates_h2h: false     # assumption: an unfinished match is not an H2H win (logged in DECISIONS.md)
+  retirement_updates_form: false    # assumption: an unfinished match is not a win/loss for last_k_winrate
+
+elo:
+  start_rating: 1500.0
+  # Dynamic K: if div_number == 0 -> K = k_factor, else K = min(max_k, max(base_k, div_number / (Ne + m)))
+  overall:
+    k_factor: 24.0
+    div_number: 800.0
+    m: 1.0
+    base_k: 0.0
+    max_k: 100.0
+    bonus_after_layoff: false
+  surface:
+    k_factor: 24.0
+    div_number: 800.0
+    m: 1.0
+    base_k: 0.0
+    max_k: 100.0
+    bonus_after_layoff: false
+  m_mode: constant          # 'constant' or 'event_matches_so_far' (never anything that looks ahead)
+  layoff:
+    threshold_days: 100
+    min_gaps: 15            # bonus only applies when there are more than this many gaps
+    start_bonus: 1.5
+    step: 0.05
+    floor: 1.0
+
+features:
+  rolling_n: 50             # last N matches WITH stats
+  winrate_k: [5, 10, 50]
+  elo_grad_window: 20
+  recent_days_window: 14    # matches_last_14_days
+  flip_augment_train: false # add flipped copies of TRAINING rows only
+
+elo_harness:
+  warmup_matches: 10000
+  tune_start: "2015-01-01"
+  tune_end: "2024-12-31"
+  grid:
+    div_number: [400, 800, 1200]
+    m: [1, 5, 10]
+    base_k: [0, 8, 16]
+    max_k: [32, 64, 100]
+    bonus_after_layoff: [false, true]
+    fixed_k: [24]
+
+splits:
+  # Development split used in Phases 3-5 for baselines and XGBoost tuning. No test period here:
+  # the plan's real test sets are Wimbledon 2025 (split A) and 2026 H2 (split B). See DECISIONS.md D-004.
+  dev:
+    train_start: "2000-01-01"
+    train_end: "2022-12-31"
+    val_start: "2023-01-01"
+    val_end: "2024-12-31"
+  # Split A: the author's replication
+  replication:
+    train_start: "2000-01-01"
+    train_end: "2024-12-31"
+    val_start: "2025-01-01"
+    val_end: "2025-06-29"     # day before Wimbledon 2025 (main draw started 2025-06-30)
+    test_tourney: "Wimbledon"
+    test_year: 2025
+  # Split B: forward test
+  forward:
+    train_start: "2000-01-01"
+    train_end: "2025-12-31"
+    val_start: "2026-01-01"
+    val_end: "2026-06-30"
+    test_start: "2026-07-01"
+
+xgb:
+  objective: "binary:logistic"
+  eval_metric: logloss
+  early_stopping_rounds: 100
+  n_trials: 800
+  n_trials_forward: 300
+  max_n_estimators: 2000
+  search_space:
+    learning_rate: [0.01, 0.1]     # log-uniform
+    max_depth: [3, 8]
+    min_child_weight: [1, 10]
+    subsample: [0.5, 1.0]
+    colsample_bytree: [0.5, 1.0]
+    gamma: [0.0, 1.0]
+    reg_alpha: [0.0, 10.0]
+    reg_lambda: [1.0, 50.0]
+
+evaluation:
+  calibration_bins: 10
+  bootstrap_samples: 2000
+  ci_level: 0.95
+  leakage_alarm_accuracy: 0.75
+
+leakage_tests:
+  slow_recompute_samples: 200
+  shuffled_label_band: [0.47, 0.53]
+  label_mean_band: [0.48, 0.52]
+
+scraping:
+  min_seconds_between_requests: 3.0

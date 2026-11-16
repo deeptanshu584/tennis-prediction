@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import math
 import time
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 import numpy as np
@@ -167,6 +168,21 @@ def _k_pair(st: PlayerState, params: tuple[EloParams, EloParams], mode: str, sur
 # --------------------------------------------------------------------------- the builder
 
 
+@dataclass
+class PassResult:
+    """Output of :func:`run_pass`: the final state plus the emitted rows (empty when ``emit_rows=False``)."""
+
+    players: dict[str, PlayerState]
+    h2h: H2H
+    emitted_pos: list[int] = field(default_factory=list)       # positions (in the sorted table) of emitted rows
+    a_won: list[bool] = field(default_factory=list)
+    a_vals: list[list[Any]] = field(default_factory=list)      # player features of A, per emitted row
+    b_vals: list[list[Any]] = field(default_factory=list)
+    prob: list[float] = field(default_factory=list)            # elo_prob_a
+    sprob: list[float] = field(default_factory=list)           # elo_surface_prob_a
+    k_rows: list[tuple[str, str, float, float]] = field(default_factory=list)
+
+
 def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: bool = False
                    ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Build the A/B-oriented feature table from the unified match table (CONTRACT section 2).
@@ -182,7 +198,22 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
     """
     check_round_rank(matches, cfg)
     ms = sort_matches(matches.loc[~matches["is_walkover"].astype(bool)])
+    res = run_pass(ms, cfg, record_k=record_k)
+    features = _assemble(ms, res, cfg)
+    if not record_k:
+        return features
+    k_log = pd.DataFrame(res.k_rows, columns=list(K_LOG_COLUMNS))
+    return features, k_log
 
+
+def run_pass(ms: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: bool = False, emit_rows: bool = True
+             ) -> PassResult:
+    """The one chronological pass over ``ms`` (already sorted by the authoritative order, walkovers removed).
+
+    For each block: read the pre-block state (K, Elo deltas, and the feature row of every emitted match) -> THEN
+    update state. ``emit_rows=False`` skips writing feature rows (the state updates are identical); it is used
+    by :mod:`tennis.engine.snapshot` to get the final state cheaply.
+    """
     clean = cfg["cleaning"]
     upd_elo = bool(clean["retirement_updates_elo"])
     upd_stats = bool(clean["retirement_updates_stats"])
@@ -199,10 +230,6 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
     m_value(1.0, mode, 0)  # validate the mode up front
     seed = int(cfg["seed"])
     first_year = int(cfg["data"]["feature_first_year"])
-    surf_names = surfaces(cfg)
-    levels = list(cfg["data"]["training_levels"])
-    pf_names = player_feature_names(cfg)
-    n_pf = len(pf_names)
     fill = static_fill(cfg)
     exempt = [str(x) for x in fcfg["rr_block_exempt_levels"]]
 
@@ -242,13 +269,9 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
             players[pid] = st
         return st
 
-    emitted_pos: list[int] = []
-    a_won_list: list[bool] = []
-    a_vals_rows: list[list[Any]] = []
-    b_vals_rows: list[list[Any]] = []
-    prob: list[float] = []
-    sprob: list[float] = []
-    k_rows: list[tuple[str, str, float, float]] = []
+    res = PassResult(players, h2h)
+    emitted_pos, a_won_list, a_vals_rows, b_vals_rows = res.emitted_pos, res.a_won, res.a_vals, res.b_vals
+    prob, sprob, k_rows = res.prob, res.sprob, res.k_rows
 
     n = len(mids)
     i = 0
@@ -272,7 +295,7 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
             dw, dl = elo_deltas(sw.elo, sl.elo, kw_o, kl_o)
             dsw, dsl = elo_deltas(surface_rating(sw, s, start), surface_rating(sl, s, start), kw_s, kl_s)
             pending.append((t, sw, sl, dw, dl, dsw, dsl))
-            if emit[t]:
+            if emit_rows and emit[t]:
                 fw = _snapshot(sw, w, l, s, day, h2h, start, winrate_k, recent_window, w_static[t], fill)
                 fl = _snapshot(sl, l, w, s, day, h2h, start, winrate_k, recent_window, l_static[t], fill)
                 a_w = orient_a_is_winner(seed, mids[t])
@@ -302,10 +325,18 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
             record_match(sw, s, tid, d, day, recent_window)
             record_match(sl, s, tid, d, day, recent_window)
         i = j
+    return res
 
-    # ---- assemble the table once
-    pos = np.asarray(emitted_pos, dtype=np.int64)
-    a_won = np.asarray(a_won_list, dtype=bool)
+
+def _assemble(ms: pd.DataFrame, res: PassResult, cfg: Mapping[str, Any]) -> pd.DataFrame:
+    """Assemble the feature table once, from the sorted matches and the emitted rows of :func:`run_pass`."""
+    surf_names = surfaces(cfg)
+    levels = list(cfg["data"]["training_levels"])
+    pf_names = player_feature_names(cfg)
+    n_pf = len(pf_names)
+    a_vals_rows, b_vals_rows = res.a_vals, res.b_vals
+    pos = np.asarray(res.emitted_pos, dtype=np.int64)
+    a_won = np.asarray(res.a_won, dtype=bool)
     sub = ms.iloc[pos]
     w_arr, l_arr = sub["winner_id"].astype(str).to_numpy(), sub["loser_id"].astype(str).to_numpy()
     wn_arr, ln_arr = sub["winner_name"].to_numpy(dtype=object), sub["loser_name"].to_numpy(dtype=object)
@@ -328,8 +359,8 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
         out[f"level_{lv}"] = (level_arr == lv).astype(np.int64)
     out["round_rank"] = sub["round_rank"].to_numpy(dtype=np.int64)
     out["best_of"] = sub["best_of"].to_numpy(dtype=np.int64)
-    out["elo_prob_a"] = np.asarray(prob, dtype=float)
-    out["elo_surface_prob_a"] = np.asarray(sprob, dtype=float)
+    out["elo_prob_a"] = np.asarray(res.prob, dtype=float)
+    out["elo_surface_prob_a"] = np.asarray(res.sprob, dtype=float)
     for j, f in enumerate(pf_names):
         av = [r[j] for r in a_vals_rows]
         bv = [r[j] for r in b_vals_rows]
@@ -339,12 +370,7 @@ def build_features(matches: pd.DataFrame, cfg: Mapping[str, Any], *, record_k: b
         out[f"d_{f}"] = dv
     assert len(out) == len(NON_FEATURE_COLUMNS) + len(context_feature_names(cfg)) + 3 * n_pf
     features = pd.DataFrame(out, columns=output_columns(cfg))
-    features = _fix_dtypes(features, pf_names)
-
-    if not record_k:
-        return features
-    k_log = pd.DataFrame(k_rows, columns=list(K_LOG_COLUMNS))
-    return features, k_log
+    return _fix_dtypes(features, pf_names)
 
 
 _INT_FEATURES: frozenset[str] = frozenset({

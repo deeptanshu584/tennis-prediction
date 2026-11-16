@@ -214,3 +214,29 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   `assert_not_augmented` on every validation/test frame (test 14 covers the split-specific guard). The Phase 5 brief
   will require it.
 - **R3:** cross-source ordering doesn't apply; no second source is merged (D-023).
+
+### D-025 (2026-11-16, Phase 3) — Betting odds: blocked, waiting on the human (🛑)
+- tennis-data.co.uk is reachable, but its robots.txt `Disallow: /` covers `Anthropic-AI`, `Claude-Web` and `ClaudeBot`,
+  and the data page says the files are not for "automated bots/scrapers/AI". The odds agent requested no data file.
+  The orchestrator will not fetch them under any User-Agent: that would get around the site owner's opt-out.
+- Also, `2026.xlsx` is one season file updated weekly, so fetching it would bring June–November 2026 data (D-017).
+- Built anyway: `src/tennis/ingest/odds.py` (parser and matcher, never downloads; 30 tests) and the `odds:` config block.
+  The parser drops rows after `odds.max_date`.
+- Only the bookmaker baseline in Phases 6–7 depends on odds. Phases 3–5 go ahead without them.
+
+### D-026 (2026-11-16, Phase 3) — Evaluation conventions (ml-engineer)
+- Accuracy gives half credit when p is exactly 0.5 (equal Elo, or equal/both-missing rank). That is the expected
+  accuracy of a coin flip and doesn't depend on orientation. It supersedes D-018's "exclude Elo ties" in all reports.
+- Rank rule: missing rank = unranked, worse than any ranked player. Rank logistic `P(A)=σ(β·(ln b_rank − ln a_rank))`,
+  no intercept (A/B is a coin flip). β = 0.6238 and the unranked fill (2160) are fitted on TRAIN rows only.
+- Bootstrap: percentile CIs over rows, with all metrics sharing the same seeded resamples. Model-vs-baseline
+  comparisons use paired bootstrap differences.
+- Calibration: 10 equal-width bins of [lo, hi); p = 1.0 goes in the last bin.
+- The leakage alarm applies to full-window and per-season accuracies, never to tiny subgroups. Subgroups above 0.75
+  are called out in reports (e.g. level F, n=29).
+- Replication split: events starting after 2025-06-29 other than Wimbledon 2025 belong to no partition (1,110 rows
+  in 2025, plus 2026).
+- `evaluation.log_loss_eps` and `evaluation.baseline_seasons` moved into config (the code should read them; Phase 4
+  brief).
+- **Phase 5 bar:** XGBoost must beat the best baseline on validation log loss: currently the rank logistic (0.6297)
+  and the Elo/surface blend (0.6336), not just Elo (0.6377).

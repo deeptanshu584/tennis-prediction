@@ -88,3 +88,25 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
 3. Phase 3 acceptance: zero unmatched players, test 5 passes, baseline table exists → pytest → commit "phase 3".
 4. Then Phase 4 (ml-engineer: elo_harness.py, grid with multiprocessing, score on 2015–2024 log loss, write the best
    settings to config, rebuild features, re-run leakage tests 1–2).
+
+## 2026-11-16 — Phase 3: Data extension + baselines ✅ (odds pending the human)
+- **TML** not ingested (D-023): the archive already covers 2025 and 2026 to 2026-06-01 with 0 unmatched players.
+- **Odds** 🛑 blocked (D-025): tennis-data.co.uk's robots.txt disallows Anthropic/Claude agents. No data file was
+  fetched. The parser and matcher `src/tennis/ingest/odds.py` are built (30 tests, never downloads), and the `odds:`
+  config block is added. Waiting on the human: manual download, drop the bookmaker baseline, or another source. Only
+  the Phase 6–7 bookmaker baseline depends on it.
+- **ml-engineer:** `splits.py` (dev/replication/forward per CONTRACT §4), `evaluate.py` (metrics, bootstrap CIs,
+  calibration, breakdowns, leakage alarm, JSONL logger, baselines), 42 tests in tests/model/.
+  Split sizes: dev 66,363 / 5,928 · replication 72,291 / 1,493 / test 122 (Wimbledon 2025) · forward 75,016 / 932 / test 473.
+- **Baselines, dev val 2023–24 (n=5,928)** in reports/baselines.md:
+
+  | Baseline | Acc | Log loss | Brier |
+  |---|---|---|---|
+  | Higher rank | 0.6385 | — | — |
+  | Rank logistic (train-fit) | 0.6385 | **0.6297** | **0.2202** |
+  | Elo | 0.6398 | 0.6377 | 0.2236 |
+  | Surface Elo | 0.6354 | 0.6379 | 0.2237 |
+  | 50/50 blend | **0.6426** | 0.6336 | 0.2217 |
+
+  The untuned Elo is underconfident (ECE 0.028).
+- **Tests:** 363 passed, 0 skipped. Leakage tests 05, 06 (shuffled labels) and 09 (too-good alarm) now run and pass.

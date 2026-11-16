@@ -21,10 +21,18 @@ from tests.fixtures.synthetic import STAT_FIELDS, make_match_row, rows_to_frame
 START = 1500.0
 
 
+# Unit tests pin the Elo settings they compute by hand (the pre-tuning defaults: K = 800/(Ne+m), cap 100, no
+# floor, no layoff bonus), so they don't depend on the tuned values in config.yaml (DECISIONS D-027).
+PINNED_ELO = {"k_factor": 24.0, "div_number": 800.0, "m": 1.0, "base_k": 0.0, "max_k": 100.0,
+              "bonus_after_layoff": False}
+
+
 @pytest.fixture
 def cfg() -> dict[str, Any]:
     c = copy.deepcopy(load_config())
     c["data"]["feature_first_year"] = 2000
+    for which in ("overall", "surface"):
+        c["elo"][which] = dict(PINNED_ELO)
     return c
 
 

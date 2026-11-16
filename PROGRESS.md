@@ -110,3 +110,17 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
 
   The untuned Elo is underconfident (ECE 0.028).
 - **Tests:** 363 passed, 0 skipped. Leakage tests 05, 06 (shuffled labels) and 09 (too-good alarm) now run and pass.
+
+## 2026-11-16 — Phase 4: Elo tuning ✅
+- ml-engineer: `src/tennis/model/elo_harness.py` (all 336k non-walkover matches from 1990, the engine's exact rules,
+  incremental layoff tracker, multiprocessing on 11 processes; bit-identical to the engine). 18 tests.
+- Scored on 2015–2024 training-level matches after the 10k warm-up (n = 26,786), on log loss. No test period used.
+- Plan grid (164 × 2): best div 1200 / m 1 / base 16 / max 64 / bonus, at the grid edge. Widened once (D-027, 650 × 2):
+  - **overall:** div 3200, m 1, base_k 16, max_k 100, bonus → log loss 0.5987, acc 66.9% (default 0.6269, 64.3%)
+  - **surface:** div 2400, m 10, base_k 24, max_k 64, bonus → log loss 0.6077, acc 66.4% (default 0.6257, 64.5%)
+- Written to config.yaml; features.parquet rebuilt (76,421 rows; about 100 s with the bonus on).
+- **Dev val 2023–24 baselines after tuning:** Elo acc 65.5%, log loss 0.6099 (was 64.0% / 0.6377). Surface Elo 64.5% /
+  0.6214. Blend 65.7% / **0.6056**. Rank logistic 63.9% / 0.6297. Elo is now inside the expected 64–70% band.
+- Reports: reports/elo_tuning.md, reports/baselines.md (regenerated), reports/figures/phase4_*.png.
+- **Tests:** full suite 379 passed + 3 engine unit tests that had hard-coded the old default K. Those now pin their
+  own Elo settings and pass (132/132 engine tests). Leakage tests 1–2 pass on the regenerated features.

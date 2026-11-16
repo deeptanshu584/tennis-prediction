@@ -15,7 +15,7 @@ from tennis.model import evaluate as ev
 CFG = {
     "seed": 42,
     "evaluation": {"calibration_bins": 10, "bootstrap_samples": 500, "ci_level": 0.95,
-                   "leakage_alarm_accuracy": 0.75},
+                   "leakage_alarm_accuracy": 0.75, "log_loss_eps": 1e-15, "baseline_seasons": [2015, 2024]},
     "data": {"surface_map": {"Hard": "Hard", "Clay": "Clay", "Grass": "Grass", "Carpet": "Hard"},
              "training_levels": ["A", "G", "M", "F", "D", "O"],
              "round_order": ["Q1", "Q2", "Q3", "Q4", "R128", "R64", "R32", "R16", "ER", "RR", "QF", "SF", "BR", "F"]},
@@ -41,6 +41,17 @@ def test_log_loss_is_clipped() -> None:
     assert math.isfinite(v) and v == pytest.approx(-math.log(ev.LOG_LOSS_EPS))
     assert ev.log_loss([1], [1.0]) == pytest.approx(-math.log(1 - ev.LOG_LOSS_EPS), abs=1e-12)
     assert ev.log_loss([0], [1.0], eps=1e-3) == pytest.approx(-math.log(1e-3))
+
+
+def test_config_aware_paths_read_log_loss_eps_from_config() -> None:
+    cfg = {**CFG, "evaluation": {**CFG["evaluation"], "log_loss_eps": 1e-2}}
+    assert ev.log_loss_eps(cfg) == 1e-2 and ev.log_loss_eps(None) == ev.LOG_LOSS_EPS
+    s = ev.score([1, 0], [0.0, 0.0], cfg, ci=False)
+    assert s["log_loss"] == pytest.approx(-(math.log(1e-2) + math.log(1 - 1e-2)) / 2)
+    lo, hi = ev.bootstrap_ci([1], [0.0], ["log_loss"], cfg=cfg)["log_loss"]
+    assert lo == hi == pytest.approx(-math.log(1e-2))
+    with pytest.raises(KeyError):
+        ev.log_loss_eps({"evaluation": {}})
 
 
 def test_brier_hand_computed() -> None:

@@ -47,20 +47,21 @@ cleaning:
 elo:
   start_rating: 1500.0
   # Dynamic K: if div_number == 0 -> K = k_factor, else K = min(max_k, max(base_k, div_number / (Ne + m)))
+  # Tuned in Phase 4 (reports/elo_tuning.md, DECISIONS D-027): best 2015-2024 log loss on the widened grid.
   overall:
-    k_factor: 24.0
-    div_number: 800.0
+    k_factor: 24.0          # only used when div_number == 0
+    div_number: 3200.0
     m: 1.0
-    base_k: 0.0
+    base_k: 16.0
     max_k: 100.0
-    bonus_after_layoff: false
+    bonus_after_layoff: true
   surface:
     k_factor: 24.0
-    div_number: 800.0
-    m: 1.0
-    base_k: 0.0
-    max_k: 100.0
-    bonus_after_layoff: false
+    div_number: 2400.0
+    m: 10.0
+    base_k: 24.0
+    max_k: 64.0
+    bonus_after_layoff: true
   # m used in K = div_number / (Ne + m):
   #   event_matches_so_far -> m = elo.<which>.m + matches the player has ALREADY played in this tourney_id (D-008)
   #   constant             -> m = elo.<which>.m
@@ -90,9 +91,10 @@ elo_harness:
   tune_start: "2015-01-01"
   tune_end: "2024-12-31"
   grid:
-    div_number: [400, 800, 1200]
+    # Plan grid widened once (D-027): the best plan-grid setting sat on the div_number/base_k edges.
+    div_number: [400, 800, 1200, 1600, 2400, 3200]
     m: [1, 5, 10]
-    base_k: [0, 8, 16]
+    base_k: [0, 8, 16, 24, 32, 40]
     max_k: [32, 64, 100]
     bonus_after_layoff: [false, true]
     fixed_k: [24]

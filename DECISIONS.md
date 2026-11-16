@@ -240,3 +240,23 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   brief).
 - **Phase 5 bar:** XGBoost must beat the best baseline on validation log loss: currently the rank logistic (0.6297)
   and the Elo/surface blend (0.6336), not just Elo (0.6377).
+
+### D-027 (2026-11-16, Phase 4) — Elo settings: tuned on 2015–2024 log loss, with the plan grid widened once
+- **Plan grid result:** the best on both flavours was div 1200, m 1, base_k 16, max_k 64, bonus on (overall log loss
+  0.60128 vs default 0.62690). It sat on the div_number and base_k edges, and edge probes one step out helped
+  (−0.001 to −0.002).
+- **Decision:** widen the grid ONCE to div_number {400…3200}, base_k {0…40} (the plan values are a subset; 650 settings
+  × 2 flavours) and take the best:
+  - **overall:** div 3200, m 1, base_k 16, max_k 100, bonus on. 2015–24 log loss **0.59865**, accuracy 0.6689.
+  - **surface:** div 2400, m 10, base_k 24, max_k 64, bonus on. Log loss **0.60772**, accuracy 0.6641 (inside the grid).
+- **No further widening:** overall still sits at the div edge, but the curve has flattened (2400 → 3200 is −0.0006), and
+  m and max_k are barely identified (top settings differ by < 0.0001). Pushing further would mainly overfit the tuning window.
+- **Why it helps:** with base_k = 16, experienced players keep K ≥ 16 instead of decaying to about 1.6, so ratings
+  react faster. The layoff bonus gives a small but significant gain (≈ −0.001). Fixed K = 24 with the bonus is within
+  noise of the plan-grid best.
+- **Caveat (D-004):** the tuning window includes the dev validation years 2023–24, so Phase 5's Elo validation
+  numbers are slightly optimistic. No test period (Wimbledon 2025; 2026-04-01 to 06-07) was used.
+- **Harness details (ml-engineer):** it scores the winner's pre-match probability (equal to coin-flip-oriented
+  scoring, since the metrics are symmetric). Edge probes are diagnostic only. Surface Elo is keyed by (player, surface),
+  with Ne on that surface and the same in-event m and layoff list. The harness is bit-identical to the engine
+  (tested on synthetic and real data).

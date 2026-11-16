@@ -29,8 +29,10 @@ PRE_COUNTS = {"1": 2, "2": 1, "3": 2, "4": 1}   # matches each player played bef
 def cfg() -> dict[str, Any]:
     c = copy.deepcopy(load_config())
     c["data"]["feature_first_year"] = 2000
-    c["elo"]["overall"]["max_k"] = 1000.0
-    c["elo"]["surface"]["max_k"] = 1000.0
+    # Pinned Elo settings (independent of the tuned config, DECISIONS D-027): K = 800/(Ne+m), no floor, no bonus.
+    for which in ("overall", "surface"):
+        c["elo"][which] = {"k_factor": 24.0, "div_number": 800.0, "m": 1.0, "base_k": 0.0, "max_k": 1000.0,
+                           "bonus_after_layoff": False}
     return c
 
 

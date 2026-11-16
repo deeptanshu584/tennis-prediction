@@ -526,18 +526,26 @@ def make_synthetic_matches(
 
 
 def _tour_finals(season: _Season, ctx: _Ctx, eight: list[str]) -> None:
-    """Round robin (2 groups of 4), semi-finals (group winner vs other runner-up), final."""
+    """Round robin (2 groups of 4), semi-finals (group winner vs other runner-up), final.
+
+    The RR is PLAYED day by day (day 1: 0v1 2v3, day 2: 0v2 1v3, day 3: 0v3 1v2 in each group) but NUMBERED with
+    day 3 first (match_num 1-4 = day 3, 5-8 = day 2, 9-12 = day 1), like Sackmann's Tour Finals 2019, where match_num
+    is not chronological. Processing an RR round sequentially by match_num would then let a day-1 row "see" day-3
+    results; only pre-block snapshotting (CONTRACT "Round-robin blocks") is right whatever the numbering.
+    """
     for s, pid in enumerate(eight):
         ctx.entries[pid] = (float(s + 1), None)
     groups = [[eight[0], eight[3], eight[4], eight[7]], [eight[1], eight[2], eight[5], eight[6]]]
-    num = 1
+    days = [[(0, 1), (2, 3)], [(0, 2), (1, 3)], [(0, 3), (1, 2)]]
     wins: dict[str, int] = {pid: 0 for pid in eight}
-    for g in groups:
-        for i in range(4):
-            for j in range(i + 1, 4):
+    for day, pairs in enumerate(days):            # chronological play
+        num = 1 + 4 * (len(days) - 1 - day)       # ... numbered latest day first
+        for g in groups:
+            for i, j in pairs:
                 w, _, _ = season.play(ctx, "RR", num, g[i], g[j], pos=num, allow_wo=False)
                 wins[w] += 1
                 num += 1
+    num = 13
     standings = [sorted(g, key=lambda pid: (-wins[pid], ctx.ranks.get(pid, (1e9,))[0])) for g in groups]
     f1, _, _ = season.play(ctx, "SF", num, standings[0][0], standings[1][1], pos=1, allow_wo=False)
     f2, _, _ = season.play(ctx, "SF", num + 1, standings[1][0], standings[0][1], pos=2, allow_wo=False)

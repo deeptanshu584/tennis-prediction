@@ -43,6 +43,21 @@ features, k_log = build_features(matches, cfg, record_k=True)                   
   `data.training_levels`; `surface_{S}` for S in the distinct values of `data.surface_map`. The names below are the
   current-config instances.
 
+### Round-robin blocks (DECISIONS D-019; audit phase2 finding 1)
+Within an RR round, `match_num` is NOT chronological (e.g. Tour Finals 2019). A **block** is a maximal run of consecutive
+matches, in authoritative order, sharing `tourney_id` with `round == "RR"` and `tourney_level` not in
+`features.rr_block_exempt_levels` (Davis Cup "D" is exempt: each tie has its own tourney_id and its rubber order is
+chronological). For every match in a block:
+- all features (the emitted row) are snapshotted from the state **before the block's first match**;
+- K uses Ne and m from that pre-block state, and the expected score E uses the pre-block ratings (overall and surface);
+- then the block's state updates are applied in authoritative order, with the Elo deltas `K·(S − E)` computed as above.
+So nothing in a block depends on another match of the same block. Logged K values (`k_log`) are these pre-block K's.
+
+### Static player attributes (DECISIONS D-020; audit phase2 finding 2)
+`height`, `is_left` and `age` come from today's player file, so whether they are missing reflects how the player's
+career went later (hindsight). Missing values are filled with the constants in `features.static_fill`, with no
+missing-indicator. These features are never NaN in the output.
+
 ### Orientation
 `a_is_winner = int(sha256(f"{seed}:{match_id}").hexdigest()[:8], 16) % 2 == 0` (per-match, independent of every
 other row). `y = 1` if A won.
@@ -109,6 +124,12 @@ Uses `cfg["splits"][split_name]` `*_start`/`*_end` dates on the `date` column (i
   `date.year == test_year`, which must start after `val_end`.
 - `forward`: train and val by dates. `test` = `date >= test_start` up to the last available date (`test_end` optional).
 Partitions are disjoint and time-ordered: max(train.date) < min(val.date) < min(test.date).
+
+## 4b. Flip augmentation (`tennis.model.dataset`; DECISIONS D-021; audit phase2 finding 3)
+`maybe_augment_train(train_df, cfg, split_name)` raises `ValueError` if any row's `date` is after
+`cfg["splits"][split_name]["train_end"]`. Flipped copies carry `is_flipped = 1` (originals 0 or no column).
+Evaluation code must assert `is_flipped` is absent or all 0 on val/test frames. Never draw an early-stopping
+holdout from augmented rows.
 
 ## 5. Model feature allow-list
 `cfg["model"]["features"]` (added by the orchestrator in Phase 2) lists the exact model input columns.

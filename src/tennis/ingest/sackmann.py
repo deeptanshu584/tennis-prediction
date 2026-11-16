@@ -355,6 +355,49 @@ def dup_key(df: pd.DataFrame) -> pd.Series:
     return key
 
 
+def split_excluded_tourneys(df: pd.DataFrame, names: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """D-022: remove every row whose tourney_name equals one of `names` exactly. Returns (kept, dropped)."""
+    mask = df["tourney_name"].isin(list(names))
+    return df[~mask], df[mask]
+
+
+def apply_level_overrides(
+    df: pd.DataFrame, overrides: list[dict[str, str]]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """D-022: set tourney_level = override level where tourney_name FULLY matches `name_regex`.
+
+    Returns (frame, changes, hits):
+    - changes: one row per (year, tourney_id, tourney_name, old_level, new_level) actually changed, with row counts.
+    - hits: per override, rows matched and rows changed.
+    A name matched by two overrides with different levels raises. Only `tourney_level` is touched.
+    """
+    out = df.copy()
+    new_level = pd.Series(pd.NA, index=out.index, dtype=object)
+    hit_rows = []
+    for ov in overrides:
+        rx, lvl = str(ov["name_regex"]), str(ov["level"])
+        match = out["tourney_name"].astype(str).str.fullmatch(rx)
+        clash = match & new_level.notna() & (new_level != lvl)
+        if clash.any():
+            names = sorted(out.loc[clash, "tourney_name"].unique())
+            raise ValueError(f"level_overrides conflict for tourney names {names}")
+        new_level = new_level.mask(match, lvl)
+        changed = match & (out["tourney_level"] != lvl)
+        hit_rows.append({"name_regex": rx, "level": lvl, "rows matched": int(match.sum()),
+                         "rows changed": int(changed.sum())})
+    changed = new_level.notna() & (out["tourney_level"] != new_level)
+    ch = out[changed]
+    changes = (
+        pd.DataFrame({"year": ch["tourney_date"].dt.year, "tourney_id": ch["tourney_id"],
+                      "tourney_name": ch["tourney_name"], "old_level": ch["tourney_level"],
+                      "new_level": new_level[changed]})
+        .value_counts().rename("rows").reset_index().sort_values(["year", "tourney_id"]).reset_index(drop=True)
+    )
+    out.loc[changed, "tourney_level"] = new_level[changed]
+    hits = pd.DataFrame(hit_rows, columns=["name_regex", "level", "rows matched", "rows changed"])
+    return out, changes, hits
+
+
 def same_match_key(df: pd.DataFrame) -> pd.Series:
     """(tourney_date, round, unordered player pair) as a string: two rows with this key describe the same
     meeting, because two players cannot meet twice in one round of one event."""
@@ -396,6 +439,13 @@ def unify(typed: pd.DataFrame, cfg: dict[str, Any], source: str = SOURCE) -> tup
     df["round_rank"] = round_rank(df["round"], data_cfg["round_order"])
     df["match_id"] = make_match_ids(df)
     df["source"] = source
+
+    # D-022: excluded tourneys (exact tourney_name) are removed entirely; level labels corrected by name.
+    df, excluded = split_excluded_tourneys(df, data_cfg.get("excluded_tourneys", []))
+    audit["excluded_tourneys"] = excluded
+    df, level_changes, override_hits = apply_level_overrides(df, data_cfg.get("level_overrides", []))
+    audit["level_changes"] = level_changes
+    audit["level_override_hits"] = override_hits
 
     flags = score_flags(df)
     df["is_walkover"] = flags["is_walkover"]
@@ -582,10 +632,11 @@ def render_report(
     summ = pd.DataFrame([
         ("raw rows read", audit["rows_in"]),
         ("dropped: self-matches (D-010)", n_self),
+        ("dropped: excluded tourneys (D-022)", len(audit.get("excluded_tourneys", []))),
         ("dropped: exact duplicates (D-009)", n_dup),
         ("contradictory duplicate results (section 4.3)",
          f"{len(audit.get('conflicts', []))} rows, "
-         f"{'dropped' if audit.get('conflicts_dropped') else 'kept (awaiting decision)'}"),
+         f"{'dropped (D-014)' if audit.get('conflicts_dropped') else 'kept'}"),
         ("rows in matches.parquet", len(m)),
         ("unique match_id", m["match_id"].nunique()),
         ("players (all found in atp_players.csv)", len(player_map)),
@@ -667,7 +718,7 @@ def render_report(
       "date more than once. Two players can't meet twice in one round, so the source records one meeting "
       "twice, here with the **winner swapped and a different score** (so D-009 doesn't catch them). The "
       "source contradicts itself, so no reliable result exists. They are dropped only if "
-      "`cleaning.drop_conflicting_results: true` (orchestrator decision; default false keeps the data "
+      "`cleaning.drop_conflicting_results: true` (D-014; with the flag false the rows are kept "
       "unchanged). While they're kept, the leakage suite's `test_no_duplicates_real_matches` (PLAN section 2, "
       "rule 8) fails on them.\n")
     if len(conf):
@@ -679,6 +730,41 @@ def render_report(
     if len(shadows):
         w(_md_table(shadows[["match_id", "tourney_id", "tourney_name", "tourney_date", "round", "match_num",
                              "winner_name", "loser_name", "score"]]) + "\n")
+
+    exc = audit.get("excluded_tourneys", pd.DataFrame(columns=["tourney_name", "tourney_date"]))
+    w(f"### 4.4 Excluded tourneys (D-022): {len(exc)} rows\n")
+    w(f"Reason: `tourney_name` exactly in `data.excluded_tourneys` = {data_cfg.get('excluded_tourneys', [])} "
+      "(exhibition, not an official competitive match). Removed from matches.parquet entirely.\n")
+    if len(exc):
+        per = (exc.assign(year=exc["tourney_date"].dt.year)
+               .groupby(["tourney_name", "year"]).agg(tourney_id=("tourney_id", "first"), rows=("match_id", "size"))
+               .reset_index())
+        w(_md_table(per.assign(year=per["year"].astype(str))) + "\n")
+
+    # ---- level overrides
+    w("### 4.5 Level overrides (D-022), results untouched\n")
+    w("`tourney_level` is set to the override level where `tourney_name` fully matches `name_regex` "
+      "(`data.level_overrides`); `is_training_level` is computed after the override.\n")
+    hits = audit.get("level_override_hits")
+    if hits is not None and len(hits):
+        w(_md_table(hits) + "\n")
+    lc = audit.get("level_changes")
+    w(f"Every change (year, tourney, old level -> new level): {0 if lc is None else int(lc['rows'].sum())} rows.\n")
+    if lc is not None and len(lc):
+        w(_md_table(lc.assign(year=lc["year"].astype(str))) + "\n")
+    rxs = [str(o["name_regex"]) for o in data_cfg.get("level_overrides", [])]
+    names = pd.Series(m["tourney_name"].unique())
+    looks = names[names.str.contains(r"(?i)olympic|tour finals|masters cup|atp finals")
+                  & ~names.str.contains(r"(?i)challenger|davis cup")]
+    missed = sorted(n for n in looks if not any(re.fullmatch(rx, n) for rx in rxs))
+    if missed:
+        lv = m[m["tourney_name"].isin(missed)].assign(year=year).groupby("tourney_name").agg(
+            levels=("tourney_level", lambda s: ", ".join(sorted(s.unique()))),
+            years=("year", lambda s: ", ".join(str(v) for v in sorted(s.unique()))),
+            rows=("match_id", "size")).reset_index()
+        w(f"**Name variants not matched by any override** (Olympics / Tour Finals look-alikes; regexes were not "
+          f"widened, pending an orchestrator decision): {len(missed)}\n")
+        w(_md_table(lv) + "\n")
 
     # ---- 5. stats invalid
     inv = audit["stats_invalid_rows"]

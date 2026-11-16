@@ -30,6 +30,11 @@ data:
   round_order: [Q1, Q2, Q3, Q4, R128, R64, R32, R16, ER, RR, QF, SF, BR, F]   # ER: 2007 RR-experiment elimination round (D-013)
   surface_map: {Hard: Hard, Clay: Clay, Grass: Grass, Carpet: Hard}
   source_priority: [sackmann, tml, scraped]
+  excluded_tourneys: ["Laver Cup"]   # exhibition: removed from matches entirely (D-022)
+  level_overrides:                   # tourney_level corrections by exact tourney_name (D-022)
+    - {name_regex: "^(Tour Finals|Masters Cup|ATP Finals)$", level: F}
+    - {name_regex: "^[A-Za-z]+ Olympics$", level: O}      # "Athens Olympics", "Paris Olympics", ...
+    - {name_regex: "^Next ?Gen Finals$", level: A}       # U21 event, short-set format: not the top-8 Finals (D-022)
 
 cleaning:
   drop_walkovers: true
@@ -74,6 +79,11 @@ features:
   elo_grad_window: 20
   recent_days_window: 14    # matches_last_14_days
   flip_augment_train: false # add flipped copies of TRAINING rows only
+  rr_block_exempt_levels: [D]   # RR rounds of these levels are processed match by match (D-019)
+  static_fill:                  # constants for missing static attributes; no missing-indicator (D-020)
+    height: 185.0
+    is_left: 0.0
+    age: 26.0
 
 elo_harness:
   warmup_matches: 10000

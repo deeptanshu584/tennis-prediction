@@ -139,3 +139,61 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
 - **Alternatives:** the plan's 2026 H2 test (no data); scraping tennisabstract (not approved); dropping Phase 7.
 - **Why:** the archive (D-007) ends in early June 2026. This keeps a true out-of-sample forward test while honouring the
   no-download instruction. Phase 7 re-tuning (≤ 300 trials) uses only the Q1-2026 validation window.
+
+### D-018 (2026-11-16, Phase 2) — Feature-engine details (feature-engineer)
+- The builder raises if `round_rank` disagrees with `data.round_order` or `match_id` isn't unique (fail loudly).
+- `matches_last_14_days` is inclusive (`date >= tourney_date − 14`) and counts every prior non-walkover match,
+  including qualifying in the same event. Because tourney_date is the start date, `days_since_last_match` is 0 for a
+  main-draw match that follows qualifying in the same tourney_id. Both use only PRIOR matches.
+- Elo history gets a new value only when Elo actually updates; with `retirement_updates_elo: false` a RET/DEF adds none.
+- `elo_grad` is a closed-form OLS slope, equal to `np.polyfit` to 1e-9.
+- The stats buffer keeps exact running integer sums (all serve counts in the data are integers).
+- `is_left`: hand codes `U` (4,275 rows) and `A` (25 rows) → NaN.
+- Flip augmentation keeps the same `match_id` on flipped copies, and the helper is documented as training-rows-only.
+  Off by default (`features.flip_augment_train: false`).
+- Elo-only accuracy excludes exact Elo ties (7 of 5,937 rows in 2023–2024).
+
+### D-019 (2026-11-16, Phase 2 audit fix) — Round-robin blocks are snapshotted from pre-block state
+- **Finding:** phase-2 audit finding 1 (blocker). Within RR rounds Sackmann's `match_num` isn't chronological (e.g.
+  Tour Finals 2019 #286 played Thursday, processed before #288 played Sunday). 858 emitted rows (1.1%) could see
+  same-round results that happened later. On those rows the last-5 win-rate heuristic rises from 60.0% to 62.0%.
+- **Decision:** a block = consecutive matches with the same tourney_id, round RR, level not in
+  `features.rr_block_exempt_levels` ([D]). Every match in a block takes its features, K/m and expected score from the
+  pre-block state; updates are then applied in order. Spec in CONTRACT §2 "Round-robin blocks".
+- **Alternatives:** reconstruct real match days (no date per match in the data); drop RR rows (loses Tour Finals etc.).
+- **Why:** provably leak-free whatever the order inside the block. The cost is that a day-3 RR match can't use day-1
+  results from the same group, a small loss of legitimate information. Davis Cup is exempt: each tie is its own tourney_id
+  and the rubber order is chronological (6,707 of 6,711, per the audit). Knock-out rounds need nothing, since each
+  player appears at most once per round.
+
+### D-020 (2026-11-16, Phase 2 audit fix) — Fill missing static attributes with constants
+- **Finding:** phase-2 audit finding 2. Height, hand and age come from today's `atp_players.csv`, so whether they are
+  missing encodes the player's later career (players with no height: median 2 career tour matches vs 19). Controlling
+  for Elo, rank and experience, missing height has a logit coefficient of −0.77.
+- **Decision:** fill missing values with `features.static_fill` (height 185, is_left 0, age 26), with no missing
+  indicator. These columns are never NaN.
+- **Alternatives:** drop height, is_left and age from the allow-list (cleanest, loses real signal); leave NaN (leaks).
+- **Why:** removes the missingness signal while keeping the real attribute for the ~97% of rows where it's known.
+  Constants come from config, not fitted (PLAN §2 rule 10). Leftover risk: a tree could split on exactly 185.0, but
+  so many real players are 185 cm that this is diluted. Revisit if feature importance highlights it.
+- Rank is unaffected: the audit confirmed `winner_rank`/`loser_rank` are pre-event values, and rank missingness is
+  real pre-match information (unranked).
+
+### D-021 (2026-11-16, Phase 2 audit fix) — Hard guard on flip augmentation
+- **Finding:** phase-2 audit finding 3. `maybe_augment_train` only warned in its docstring against val/test use.
+- **Decision:** it takes `split_name` and raises if any row is dated after that split's `train_end`. Flipped copies
+  carry `is_flipped = 1`, and evaluation asserts it is absent on val/test (CONTRACT §4b).
+
+### D-022 (2026-11-16, Phase 2 audit notes) — Laver Cup excluded; level labels corrected
+- **Laver Cup** (an exhibition, 58 rows) is removed from matches entirely via `data.excluded_tourneys`. It isn't
+  an official ATP competitive match and shouldn't be a label or move ratings.
+- **Level overrides** by exact tourney_name (`data.level_overrides`): Tour Finals / Masters Cup / ATP Finals → F (2023
+  was labelled A); Olympics → O (1992–2021 were labelled A). This changes only the level one-hots and
+  `is_training_level` (both already training levels); results are untouched. NextGen Finals stays a training row
+  (official ATP event).
+- **Retirements excluded from evaluation** (audit note 6): per the plan, RET/DEF are never labels, which makes
+  reported accuracy slightly optimistic relative to every real match. The Phase 6/7 reports must say so.
+- **Amendment (2026-11-16):** the first Olympics regex (`^Olympics$`) matched nothing, because the real names are
+  "<City> Olympics". It is now `^[A-Za-z]+ Olympics$` → O, covering 1992–2024. NextGen Finals / Next Gen Finals were
+  labelled F in 2017–19 and 2023–25 but A in 2021–22; they are now consistently **A**. It's a U21 event with a short-set
+  format and shouldn't share `level_F` with the top-8 Tour Finals. Found by the feature-engineer.

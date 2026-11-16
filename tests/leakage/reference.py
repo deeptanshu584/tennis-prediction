@@ -5,8 +5,9 @@ Used by test 2 (slow recompute). It shares NO code with `tennis.engine`:
 - Elo (overall + surface, dynamic K, layoff bonus, m modes) is replayed with plain dicts in one chronological loop,
   written from PLAN.md 5.2-5.4 and CONTRACT.md. The pre-match snapshot of match i is the state after replaying
   matches 0..i-1, i.e. exactly "replay the strictly earlier matches".
-- Every other player feature is recomputed by FILTERING the strictly earlier matches (``ms.iloc[:i]``) for the
-  player, with no incremental state at all.
+- Every other player feature is recomputed by FILTERING the visible earlier matches for the player, with no
+  incremental state at all. Visible = every match before the match itself, or, for a match in a round-robin block,
+  every match before the block's FIRST match (``ms.iloc[:block_start[i]]``).
 
 Contract rulings mirrored here:
 - Authoritative order (tourney_date, tourney_id, round_rank, match_num, match_id); match_id is the final tiebreaker.
@@ -14,6 +15,10 @@ Contract rulings mirrored here:
 - Layoff `played`: one entry per distinct prior tourney_id; the current tourney is added only if its id is absent.
 - k_log covers RET/DEF matches too (the K that would have applied).
 - Column names come from config: winrate_last_{k}, level_{L}, surface_{S}.
+- Round-robin blocks (D-019): a maximal run of consecutive matches (authoritative order) with the same tourney_id,
+  round == "RR" and tourney_level not in features.rr_block_exempt_levels. Every block match takes its features, K (Ne,
+  m, layoff list) and expected scores from the pre-block state; the deltas K*(S - E) are then applied in order.
+- Static attributes (D-020): height, is_left and age that are missing are filled with features.static_fill.
 """
 
 from __future__ import annotations
@@ -146,10 +151,23 @@ def _expected(r_a: float, r_b: float) -> float:
     return 1.0 / (1.0 + 10 ** ((r_b - r_a) / 400.0))
 
 
+def block_start(ms: pd.DataFrame, cfg: dict[str, Any]) -> np.ndarray:
+    """For each `chronological()` row, the position of the first match of its round-robin block (itself if none)."""
+    exempt = set(cfg["features"]["rr_block_exempt_levels"])
+    in_rr = ((ms["round"] == "RR") & ~ms["tourney_level"].isin(exempt)).to_numpy()
+    tids = ms["tourney_id"].to_numpy()
+    start = np.arange(len(ms))
+    for i in range(1, len(ms)):
+        if in_rr[i] and in_rr[i - 1] and tids[i] == tids[i - 1]:
+            start[i] = start[i - 1]
+    return start
+
+
 def elo_replay(ms: pd.DataFrame, cfg: dict[str, Any], targets: Iterable[str]) -> dict[str, dict[str, dict]]:
     """Replay Elo over `chronological()` rows; return pre-match snapshots for the target match ids.
 
     snapshot[match_id][player_id] = {elo, elo_surface, hist (last window values), k_overall, k_surface}
+    Round-robin blocks: all snapshots, K values and expected scores of a block come from the pre-block state.
     """
     targets = set(targets)
     e = cfg["elo"]
@@ -170,44 +188,61 @@ def elo_replay(ms: pd.DataFrame, cfg: dict[str, Any], targets: Iterable[str]) ->
     snaps: dict[str, dict[str, dict]] = {}
 
     cols = ["match_id", "winner_id", "loser_id", "surface", "tourney_id", "tourney_date", "is_retirement"]
-    for mid, w, l, s, tid, d, is_ret in ms[cols].itertuples(index=False, name=None):
-        for p in (w, l):
-            rating.setdefault(p, start)
-            srating.setdefault((p, s), start)
-            hist.setdefault(p, [start])
-        k: dict[str, tuple[float, float]] = {}
-        for p in (w, l):
-            played = list(tourneys[p].values())
-            if tid not in tourneys[p]:
-                played.append(d)
-            m_o, m_s = float(e["overall"]["m"]), float(e["surface"]["m"])
-            if mode == "event_matches_so_far":  # CONTRACT: m = elo.<which>.m + matches already played in event
-                m_o += n_event[(p, tid)]
-                m_s += n_event[(p, tid)]
-            k[p] = (_k(n_all[p], m_o, e["overall"], played, lay),
-                    _k(n_surf[(p, s)], m_s, e["surface"], played, lay))
-        if mid in targets:
-            snaps[mid] = {
-                p: {"elo": rating[p], "elo_surface": srating[(p, s)], "hist": list(hist[p][-window:]),
-                    "k_overall": k[p][0], "k_surface": k[p][1]}
-                for p in (w, l)
+    records = list(ms[cols].itertuples(index=False, name=None))
+    starts = block_start(ms, cfg)
+    i = 0
+    while i < len(records):
+        j = i + 1
+        while j < len(records) and starts[j] == starts[i]:
+            j += 1
+        block = records[i:j]  # a single match, or one whole round-robin block
+
+        # 1) everything pre-match is read from the state BEFORE the block's first match
+        pre: list[dict[str, Any]] = []
+        for mid, w, l, s, tid, d, is_ret in block:
+            for p in (w, l):
+                rating.setdefault(p, start)
+                srating.setdefault((p, s), start)
+                hist.setdefault(p, [start])
+            k: dict[str, tuple[float, float]] = {}
+            for p in (w, l):
+                played = list(tourneys[p].values())
+                if tid not in tourneys[p]:
+                    played.append(d)
+                m_o, m_s = float(e["overall"]["m"]), float(e["surface"]["m"])
+                if mode == "event_matches_so_far":  # CONTRACT: m = elo.<which>.m + matches already played in event
+                    m_o += n_event[(p, tid)]
+                    m_s += n_event[(p, tid)]
+                k[p] = (_k(n_all[p], m_o, e["overall"], played, lay),
+                        _k(n_surf[(p, s)], m_s, e["surface"], played, lay))
+            exp = {
+                "w": _expected(rating[w], rating[l]), "l": _expected(rating[l], rating[w]),
+                "sw": _expected(srating[(w, s)], srating[(l, s)]), "sl": _expected(srating[(l, s)], srating[(w, s)]),
             }
-        if (not bool(is_ret)) or upd_ret:
-            rw, rl = rating[w], rating[l]
-            new_w = rw + k[w][0] * (1.0 - _expected(rw, rl))
-            new_l = rl + k[l][0] * (0.0 - _expected(rl, rw))
-            sw, sl = srating[(w, s)], srating[(l, s)]
-            new_sw = sw + k[w][1] * (1.0 - _expected(sw, sl))
-            new_sl = sl + k[l][1] * (0.0 - _expected(sl, sw))
-            rating[w], rating[l] = new_w, new_l
-            srating[(w, s)], srating[(l, s)] = new_sw, new_sl
-            hist[w].append(new_w)
-            hist[l].append(new_l)
-        for p in (w, l):
-            n_all[p] += 1
-            n_surf[(p, s)] += 1
-            n_event[(p, tid)] += 1
-            tourneys[p].setdefault(tid, d)
+            if mid in targets:
+                snaps[mid] = {
+                    p: {"elo": rating[p], "elo_surface": srating[(p, s)], "hist": list(hist[p][-window:]),
+                        "k_overall": k[p][0], "k_surface": k[p][1]}
+                    for p in (w, l)
+                }
+            pre.append({"k": k, "exp": exp})
+
+        # 2) then the block's updates, in authoritative order, with deltas from the pre-block K and E
+        for (mid, w, l, s, tid, d, is_ret), snap in zip(block, pre):
+            k, exp = snap["k"], snap["exp"]
+            if (not bool(is_ret)) or upd_ret:
+                rating[w] += k[w][0] * (1.0 - exp["w"])
+                rating[l] += k[l][0] * (0.0 - exp["l"])
+                srating[(w, s)] += k[w][1] * (1.0 - exp["sw"])
+                srating[(l, s)] += k[l][1] * (0.0 - exp["sl"])
+                hist[w].append(rating[w])
+                hist[l].append(rating[l])
+            for p in (w, l):
+                n_all[p] += 1
+                n_surf[(p, s)] += 1
+                n_event[(p, tid)] += 1
+                tourneys[p].setdefault(tid, d)
+        i = j
     return snaps
 
 
@@ -231,7 +266,7 @@ def _stats_ok(df: pd.DataFrame) -> pd.Series:
 
 
 def player_features(prior: pd.DataFrame, row: pd.Series, p: str, opp: str, cfg: dict[str, Any]) -> dict[str, Any]:
-    """Features of player `p` for match `row`, computed only from `prior` (= strictly earlier matches)."""
+    """Features of player `p` for match `row`, computed only from `prior` (= the visible earlier matches)."""
     clean = cfg["cleaning"]
     fcfg = cfg["features"]
     surf = row["surface"]
@@ -285,10 +320,11 @@ def player_features(prior: pd.DataFrame, row: pd.Series, p: str, opp: str, cfg: 
     side = "winner" if row["winner_id"] == p else "loser"
     f["rank"] = row[f"{side}_rank"]
     f["rank_points"] = row[f"{side}_rank_points"]
-    f["age"] = row[f"{side}_age"]
-    f["height"] = row[f"{side}_ht"]
-    hand = row[f"{side}_hand"]
-    f["is_left"] = 1.0 if hand == "L" else (0.0 if hand == "R" else NAN)
+    fill = fcfg["static_fill"]  # D-020: missing static attributes -> config constants
+    age, height, hand = row[f"{side}_age"], row[f"{side}_ht"], row[f"{side}_hand"]
+    f["age"] = float(fill["age"]) if _isnan(age) else age
+    f["height"] = float(fill["height"]) if _isnan(height) else height
+    f["is_left"] = 1.0 if hand == "L" else (0.0 if hand == "R" else float(fill["is_left"]))
 
     if len(mine):
         f["days_since_last_match"] = float((date - mine["tourney_date"].iloc[-1]).days)
@@ -325,10 +361,11 @@ def reference_rows(matches: pd.DataFrame, cfg: dict[str, Any], match_ids: Iterab
     for c in ("winner_id", "loser_id", "surface"):
         narrow[c] = narrow[c].astype(object)
     narrow["is_retirement"] = narrow["is_retirement"].astype(bool)
+    starts = block_start(ms, cfg)
     positions = ms.index[ms["match_id"].isin(match_ids)]
     for i in positions:
         row = ms.loc[i]
-        prior = narrow.iloc[:i]  # strictly earlier matches only
+        prior = narrow.iloc[:starts[i]]  # matches before this one (before the block's first match, for RR blocks)
         mid, w, l = row["match_id"], row["winner_id"], row["loser_id"]
         a_w = a_is_winner(seed, mid)
         a, b = (w, l) if a_w else (l, w)

@@ -400,3 +400,78 @@ def test_render_report_on_fixture(fixture_cfg):
         assert heading in text
     assert "Self-matches (D-010): 1 rows" in text
     assert "Exact duplicates (D-009): 1 rows" in text
+
+
+# ---------------------------------------------------------------------------------------------------- D-022
+def _d022_cfg(cfg):
+    cfg["data"]["excluded_tourneys"] = ["Laver Cup"]
+    cfg["data"]["level_overrides"] = [
+        {"name_regex": "^(Tour Finals|Masters Cup|ATP Finals)$", "level": "F"},
+        {"name_regex": "^Olympics$", "level": "O"},
+    ]
+    return cfg
+
+
+def test_excluded_tourneys_removed_exact_name(cfg):
+    cfg = _d022_cfg(cfg)
+    rows = [
+        raw_row(tourney_id="2023-9210", tourney_name="Laver Cup", match_num="1", winner_id="1", loser_id="2"),
+        raw_row(tourney_id="2023-9210", tourney_name="Laver Cup", match_num="2", winner_id="3", loser_id="4"),
+        raw_row(tourney_id="2023-0001", tourney_name="Laver Cup Exhibition", match_num="1", winner_id="5",
+                loser_id="6"),  # not an exact match -> kept
+        raw_row(tourney_id="2023-0002", tourney_name="Testopen", match_num="1", winner_id="7", loser_id="8"),
+    ]
+    u, audit = unify(typed_frame(rows), cfg)
+    assert sorted(u["tourney_name"]) == ["Laver Cup Exhibition", "Testopen"]
+    assert audit["excluded_tourneys"]["match_num"].tolist() == [1, 2]
+
+
+def test_level_overrides_full_match_and_training_level(cfg):
+    cfg = _d022_cfg(cfg)
+    rows = [
+        raw_row(tourney_id="2023-0605", tourney_name="Tour Finals", tourney_level="A", round="RR",
+                winner_id="1", loser_id="2"),
+        raw_row(tourney_id="2005-0605", tourney_name="Masters Cup", tourney_level="F", round="F",
+                tourney_date="20051113", winner_id="3", loser_id="4"),
+        raw_row(tourney_id="2021-0096", tourney_name="Olympics", tourney_level="A", round="R64",
+                tourney_date="20210724", winner_id="5", loser_id="6"),
+        # partial matches are NOT overridden (fullmatch)
+        raw_row(tourney_id="2021-0097", tourney_name="Tokyo Olympics", tourney_level="A", round="R64",
+                tourney_date="20210724", winner_id="7", loser_id="8"),
+        raw_row(tourney_id="2015-7000", tourney_name="Challenger Tour Finals", tourney_level="C", round="F",
+                tourney_date="20151116", winner_id="9", loser_id="10"),
+    ]
+    u, audit = unify(typed_frame(rows), cfg)
+    lvl = dict(zip(u["tourney_name"], u["tourney_level"]))
+    assert lvl == {"Tour Finals": "F", "Masters Cup": "F", "Olympics": "O", "Tokyo Olympics": "A",
+                   "Challenger Tour Finals": "C"}
+    tl = dict(zip(u["tourney_name"], u["is_training_level"]))
+    assert not tl["Challenger Tour Finals"]
+    assert tl["Tour Finals"] and tl["Olympics"]
+    ch = audit["level_changes"]
+    assert ch[["year", "tourney_name", "old_level", "new_level", "rows"]].values.tolist() == [
+        [2021, "Olympics", "A", "O", 1], [2023, "Tour Finals", "A", "F", 1]]
+    hits = audit["level_override_hits"].set_index("level")
+    assert hits.loc["F", "rows matched"] == 2 and hits.loc["F", "rows changed"] == 1
+    # results untouched
+    assert u.loc[u["tourney_name"] == "Tour Finals", "winner_id"].item() == "1"
+
+
+def test_level_override_can_make_row_non_training(cfg):
+    cfg["data"]["level_overrides"] = [{"name_regex": "Exhibition Cup", "level": "X"}]
+    u, _ = unify(typed_frame([raw_row(tourney_name="Exhibition Cup", tourney_level="A")]), cfg)
+    assert u.loc[0, "tourney_level"] == "X" and not bool(u.loc[0, "is_training_level"])
+
+
+def test_conflicting_level_overrides_raise(cfg):
+    cfg["data"]["level_overrides"] = [{"name_regex": "Tour Finals", "level": "F"},
+                                      {"name_regex": "Tour.*", "level": "A"}]
+    with pytest.raises(ValueError, match="conflict"):
+        unify(typed_frame([raw_row(tourney_name="Tour Finals")]), cfg)
+
+
+def test_d022_absent_config_is_noop(cfg):
+    cfg["data"].pop("excluded_tourneys", None)
+    cfg["data"].pop("level_overrides", None)
+    u, audit = unify(typed_frame([raw_row(tourney_name="Laver Cup")]), cfg)
+    assert len(u) == 1 and len(audit["level_changes"]) == 0

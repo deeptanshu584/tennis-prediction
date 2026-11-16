@@ -44,3 +44,28 @@
 (Phase 3), features.parquet, `cfg.model.features`, or no experiment logs. Leakage test 5 (duplicates) and test 0
 pass on the real data; test 7 passes.
 **Open issues:** 2026 H2 data for Phase 7 → resolved by the human: shortened forward test, Apr–early Jun 2026 (D-017).
+
+## 2026-11-16 — Phase 2: Feature engine (audit pending)
+**Done (feature-engineer)**
+- `src/tennis/engine/{ordering,state,rolling,h2h,build_features}.py` and `src/tennis/model/dataset.py`: one
+  chronological pass that snapshots, emits, then updates. `python -m tennis.engine.build_features` runs over all
+  337,721 matches in about 12 s.
+- `data/processed/features.parquet`: 76,479 rows × 115 columns (106 allow-listed), 2000 → 2026-05. Label mean 0.4989.
+  NaN ≤ 3% per a_ feature (rates 2.9%, rank 1.4%).
+- tests/engine: 116 unit tests, written first.
+
+**Tests:** `pytest -q` → 254 passed, 5 skipped (splits for Phase 3, and no experiment logs yet). Leakage tests 1–4,
+7 and 8 pass on synthetic AND real data. That includes test 2 against the auditor's independent reference at 1e-9
+(also run on the full 1990+ history).
+
+**Metrics (Elo-only, untuned K = 800/(Ne+m)):** 2023–24 accuracy **63.96%** (surface Elo 63.55%; rank-only 63.76%),
+elo_prob log loss 0.6376. Seasons 2015–2024 range 61.2–68.0%; the 2000–2026 maximum is 68.6% (2012). Nothing near
+75%. The 2023–24 figure is at the low edge of the expected ~64–70%; Phase 4 tunes K.
+**Next:** a fresh leakage-auditor reviews the engine and re-checks the unified table (D-016).
+**Audit 1 (fresh auditor): FAIL**, with 1 blocker and 2 should-fix findings (reports/audits/phase2.md):
+RR rounds not chronological (858 rows), hindsight in missing height/hand/age, and no guard on augmentation. Fixed per
+D-019…D-022 by the feature-engineer (engine), the suite author (reference.py updated independently, plus an
+RR-trap fixture) and the data-engineer (Laver Cup excluded, level overrides; it was cut off by the usage limit after
+its tests passed, and the orchestrator finished the regex fix). Auditor tests 10–13 added and passing.
+Rebuilt: matches 337,663 · features **76,421** rows. Elo-only 2023–24 **63.99%**, log loss 0.6377.
+**Tests:** 282 passed, 5 skipped. **Next:** re-audit (running) → commit Phase 2 → Phase 3.

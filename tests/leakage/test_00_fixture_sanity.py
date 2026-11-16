@@ -114,6 +114,12 @@ def test_edge_cases_present(synthetic_matches: pd.DataFrame) -> None:
     assert {"R", "L", "U"} <= hands
     assert df["winner_hand"].isna().any() or df["loser_hand"].isna().any()
     assert df["tourney_name"].str.contains("Carpet").any()
+    # a non-exempt round-robin round where players meet several opponents (block snapshotting matters there)
+    rr = df[(df["round"] == "RR") & (df["tourney_level"] == "F")]
+    assert not rr.empty
+    per_player = pd.concat([rr[["tourney_id", "winner_id"]].set_axis(["t", "p"], axis=1),
+                            rr[["tourney_id", "loser_id"]].set_axis(["t", "p"], axis=1)]).value_counts()
+    assert (per_player >= 3).all()
     assert df["surface_imputed"].any() and not df["surface_imputed"].all()
     stat_all_nan = df[stat_cols].isna().all(axis=1)
     assert df["stats_invalid"].any() and stat_all_nan[df["stats_invalid"]].all()

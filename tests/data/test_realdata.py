@@ -52,3 +52,14 @@ def test_tour_level_2023_in_band(matches):
     training = m["is_training_level"] & ~m["is_walkover"] & ~m["is_retirement"]
     n = int((training & (m["tourney_date"].dt.year == 2023)).sum())
     assert 2500 <= n <= 4500, n
+
+
+def test_d022_excluded_and_overridden(matches):
+    import re
+
+    assert not matches["tourney_name"].isin(CFG["data"].get("excluded_tourneys", [])).any()
+    for ov in CFG["data"].get("level_overrides", []):
+        hit = matches["tourney_name"].map(lambda n, rx=ov["name_regex"]: re.fullmatch(rx, n) is not None)
+        assert (matches.loc[hit, "tourney_level"] == ov["level"]).all(), ov
+    expected = matches["tourney_level"].isin(CFG["data"]["training_levels"]) & ~matches["is_qualifying"]
+    assert (matches["is_training_level"] == expected).all()

@@ -1,6 +1,9 @@
 # Phase 2 audit: feature engine, plus a re-check of the Phase 1 unified table
 
-**Verdict: FAIL.** There is one blocker: inside round-robin rounds, a row can read results of matches that were
+> **Current verdict, after the re-audit (end of file): PASS.** The first audit below was FAIL; its findings 1–3
+> and note 7 are fixed and verified.
+
+**First-audit verdict: FAIL.** There is one blocker: inside round-robin rounds, a row can read results of matches that were
 really played after it (finding 1). It is a genuine leak but a small one. It touches 858 of 76,479 rows (1.1%) and
 none of the replication or forward test rows. There are also two should-fix items: missingness of present-day
 player attributes (finding 2), and an unguarded flip-augmentation helper (finding 3). Everything else checked out:
@@ -211,3 +214,120 @@ modified. With the fix, test 10 and all of test 01 pass (10/10).
 - The real chronology inside non-RR rounds and the true match dates are unknowable from the data. tourney_date is
   the start date, so all checks are about consistency.
 - The Phase 3+ split and model code doesn't exist yet.
+
+---
+## Re-audit (2026-11-16): **PASS**
+I re-audited the fixes for findings 1–3 and note 7, against DECISIONS D-019 to D-022 (including the D-022
+amendment) and CONTRACT §2 ("Round-robin blocks", "Static player attributes") and §4b. I changed no source or
+existing test. I added one new test file (test 14).
+
+### (a) The fixes in the code
+1. **Finding 1: RR blocks. Fixed.**
+   - **The block.** `src/tennis/engine/build_features.py:222-224` flags rows with `round == "RR"` whose level is
+     not in `features.rr_block_exempt_levels` (`[D]`, `config.yaml:82`). Lines `:253-260` extend a block over
+     consecutive rows with the same tourney_id. In the authoritative sort these rows are always contiguous, since
+     they share date, tourney_id and round_rank.
+   - **Pass 1, reads only (`:263-285`).** For every match in the block, everything is read from the state before
+     the block:
+     - K via `_k_pair`, which also reads Ne, the event count `m` and the layoff list;
+     - the Elo deltas via `state.elo_deltas` (`state.py:126-131`), whose expected score E (overall and surface)
+       uses the pre-block ratings;
+     - the emitted snapshot, including h2h, the stats buffer, form, recent days and `elo_prob_a`;
+     - the `k_log` entries.
+
+     Nothing in pass 1 writes state. `get()` only creates new players at the start rating.
+   - **Pass 2, writes (`:288-303`).** It applies the stored deltas in authoritative order, adding them to the
+     current ratings. The same `PlayerState` object accumulates correctly when a player appears twice. Stats,
+     h2h, form and `record_match` updates all happen here. **No value read inside a block depends on another
+     match of the same block.**
+   - **Non-RR rounds.** They are blocks of one match, so their behaviour is unchanged.
+   - **The reference.** `tests/leakage/reference.py:154-246` (`block_start`, `elo_replay`, and `:364-368` for the
+     other features) implements the same rule on its own, from `ms.iloc[:block_start]`.
+   - **The synthetic fixture.** `tests/fixtures/synthetic.py:528-552` now plays its RR day by day but numbers it
+     latest day first, which is a real trap.
+   - **No gap left in the data.** In the rebuilt data, no emitted round other than RR has a player twice
+     (0 cases). The remaining repeats are Challenger or qualifying rows, which are never emitted.
+2. **Finding 2: static attributes. Fixed.**
+   - `build_features.py:122-152` fills height, is_left and age from `features.static_fill` (185 / 0 / 26,
+     `config.yaml:83-86`), with no indicator. These are config constants, so nothing is fitted.
+   - Rank and rank points keep NaN, which is correct: unranked is real pre-match information.
+3. **Finding 3: augmentation guard. Fixed.**
+   - `src/tennis/model/dataset.py:89-124`: `maybe_augment_train(train_df, cfg, split_name=None)` raises
+     `ValueError` for rows after the train_end of `split_name` (or the latest train_end when it is None). The check
+     runs whether or not the flag is set, and the function refuses frames that are already augmented. Flipped
+     copies carry `is_flipped = 1`.
+   - `:127-134`: `assert_not_augmented` exists for evaluation code to call.
+4. **Note 7: level labels. Fixed.** `src/tennis/ingest/sackmann.py:358-398` and `:443-455`:
+   - Laver Cup is removed entirely (0 rows remain).
+   - Tour Finals and Masters Cup → F (540 rows).
+   - Every "<City> Olympics", 1992–2024 → O (64 rows each; 63 for Barcelona).
+   - NextGen Finals and Next Gen Finals → A (122 rows).
+   - The override is applied before `is_training_level` is computed. Results are untouched.
+
+### (b) Leakage suite (slow + realdata included)
+- `pytest tests/leakage -q`: **45 passed, 5 skipped** (134 s).
+  - Skips: 4 × `tennis.model.splits` missing (Phase 3); 1 × no experiments/*.jsonl yet.
+  - My tests 10–13 now all **pass, unchanged**. Test 10 covers both synthetic and real data (Tour Finals 2019,
+    NextGen 2019, ATP Cup 2020). Test 12 finds 0 NaN in a_/b_/d_ height, is_left and age. Test 13 confirms the
+    rebuilt features.parquet equals a fresh build.
+- **New test file:** `test_14_augment_split_guard.py`, 4 tests, **pass**. It checks that, given `split_name`, each
+  split's own validation rows are refused while its last training day is accepted, and that
+  `assert_not_augmented` rejects flipped rows.
+- The data and output tables are still sound:
+  - matches.parquet has 337,663 rows, a unique match_id, and `order_key` equal to each row's position.
+  - features.parquet has 76,421 rows, exactly the expected emitted set. It contains 0 walkover, RET/DEF,
+    qualifying or non-training rows.
+
+### (c) Residual missingness signal after the static fill (empirical, new features.parquet)
+- **No NaN left.** All 9 height, is_left and age columns have 0 NaN.
+- **The fill value is well diluted.**
+  - 2,208 filled a_height values sit among 11,701 genuine 185 cm values.
+  - 15 filled ages sit among 829 genuine exact 26.0 values.
+  - is_left 0 is indistinguishable from right-handed.
+- **What remains, in-sample.** Controlling for Elo, log matches played, log rank and rank-NaN:
+  - the indicator "height == 185" has a coefficient of −0.05 (missing-height had −0.77) and improves log loss by
+    0.00007 (was 0.0019);
+  - "age == 26.0" has a coefficient of −0.01.
+  - The remainder is concentrated in Davis Cup rows: the interaction 185 × level_D has a coefficient of −0.52,
+    against +0.01 outside Davis Cup. A filled 185 player has y = 0.34, against 0.51 for a genuine 185.
+- **Out of sample there is nothing to exploit.** I trained a gradient-boosted tree on the dev split (2000–2022) with
+  Elo, rank, experience and level features. Adding a_/b_/d_height changed 2023–24 validation log loss from 0.61519
+  to 0.61522 (no gain) and accuracy from 64.91% to 64.95%.
+- **Verdict on finding 2: resolved.** Note R1 below records the small in-sample remainder in Davis Cup.
+
+### (d) Elo-only sanity check (new features.parquet)
+- **2023–24 (n = 5,928):** `a_elo > b_elo` accuracy is **63.95%** (7 exact ties counted as B), and `elo_prob_a`
+  log loss is **0.6377**. Surface Elo gets 63.53% and the rank baseline 63.78%.
+- **Per season, 2015–2024** (accuracy / log loss):
+
+  | Season | Accuracy | Log loss |
+  |---|---|---|
+  | 2015 | 68.02% | 0.5951 |
+  | 2016 | 66.90% | 0.6009 |
+  | 2017 | 64.85% | 0.6183 |
+  | 2018 | 62.86% | 0.6333 |
+  | 2019 | 62.39% | 0.6365 |
+  | 2020 | 63.50% | 0.6352 |
+  | 2021 | 61.12% | 0.6496 |
+  | 2022 | 64.26% | 0.6295 |
+  | 2023 | 63.85% | 0.6415 |
+  | 2024 | 64.05% | 0.6341 |
+
+- **2025 and 2026:** 63.71% and 64.91%.
+- No season is above 70%, and the numbers are essentially unchanged from the first audit, as expected for a fix
+  that touches about 1% of rows.
+- **Orientation:** the label mean is 0.4988, and `elo_prob_a` equals the logistic of the a/b Elo values exactly.
+
+### Remaining notes (no action needed for Phase 2)
+- **R1 (note).** In-sample, a filled height of 185 still carries a small hindsight remainder in Davis Cup rows
+  (above). It gives no out-of-sample gain. In Phase 5, check XGBoost feature importance and the SHAP values of
+  `d_height`/`a_height`. If height ranks high, drop it from the allow-list (the D-020 alternative).
+- **R2 (note).** With `split_name=None`, the augmentation guard only checks the LATEST train_end (2025-12-31), so
+  dev-split validation rows from 2023–24 would pass it.
+  - Phase 5 model code must always pass `split_name`. Test 14 pins down that behaviour.
+  - Consider making `split_name` required once a caller exists.
+  - Evaluation must call `assert_not_augmented` on every val/test frame.
+- **R3 (note).** Re-run the checks on cross-event ordering and same-date events (first-audit note 4) after
+  TML/scraped data is merged in Phase 3.
+- **R4 (note).** The splits checks (checklist 4) and the fitted-preprocessing checks (checklist 6) remain
+  untestable until Phase 3/5.

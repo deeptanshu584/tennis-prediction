@@ -69,3 +69,22 @@ RR-trap fixture) and the data-engineer (Laver Cup excluded, level overrides; it 
 its tests passed, and the orchestrator finished the regex fix). Auditor tests 10–13 added and passing.
 Rebuilt: matches 337,663 · features **76,421** rows. Elo-only 2023–24 **63.99%**, log loss 0.6377.
 **Tests:** 282 passed, 5 skipped. **Next:** re-audit (running) → commit Phase 2 → Phase 3.
+Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage suite 45 passed, 5 skipped, plus new test 14 (4 passing). Elo-only 2023–24 63.95% (independent recompute). Follow-ups D-024. Phase 2 ✅
+
+## 2026-11-16 — Phase 3: Data extension + baselines (starting)
+- TML coverage: `reports/data/tml_coverage.md`. TML is not ingested (D-023): it adds nothing the archive lacks.
+  Phase 3 acceptance "matches through the latest available 2026 date, zero unmatched players" is already met.
+
+### EXACT NEXT STEPS (written 2026-11-16 while the auto-mode permission check was failing transiently)
+1. Wait for the Phase 2 re-audit (leakage-auditor resumed; it writes a "Re-audit" section in reports/audits/phase2.md).
+   PASS → commit "phase 2: audit PASS". FAIL → send the findings to the feature-engineer, fix, re-audit.
+2. Launch Phase 3 in parallel (the launches failed on the transient check; retry):
+   a. data-engineer (fresh agent): tennis-data.co.uk odds 2015–2026 → data/raw/odds/ (polite, cached, ≥ 3 s, no
+      June–Nov 2026 match data) → src/tennis/ingest/odds.py → data/interim/odds.parquet matched to match_id
+      (≥ 97% tour main draw), plus reports/data/odds_ingest.md and tests/data/test_odds.py. If the download fails → 🛑 ask the human.
+   b. ml-engineer (fresh agent): src/tennis/model/splits.py (CONTRACT §4) and evaluate.py (metrics, bootstrap CI,
+      calibration, JSONL logger, leakage alarm); baselines on dev split val 2023–24 → reports/baselines.md,
+      experiments/baselines.jsonl, reports/figures/phase3_calibration_elo.png; tests/model/. Leakage tests 05/06/09 must pass.
+3. Phase 3 acceptance: zero unmatched players, test 5 passes, baseline table exists → pytest → commit "phase 3".
+4. Then Phase 4 (ml-engineer: elo_harness.py, grid with multiprocessing, score on 2015–2024 log loss, write the best
+   settings to config, rebuild features, re-run leakage tests 1–2).

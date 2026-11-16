@@ -197,3 +197,20 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   "<City> Olympics". It is now `^[A-Za-z]+ Olympics$` → O, covering 1992–2024. NextGen Finals / Next Gen Finals were
   labelled F in 2017–19 and 2023–25 but A in 2021–22; they are now consistently **A**. It's a U21 event with a short-set
   format and shouldn't share `level_F` with the top-8 Tour Finals. Found by the feature-engineer.
+
+### D-023 (2026-11-16, Phase 3) — TML-Database is not ingested
+- **Decision:** don't build `src/tennis/ingest/tml.py` or merge TML. Details in `reports/data/tml_coverage.md`.
+- **Alternatives:** ingest TML 2025–Jan 2026 and de-duplicate against the archive.
+- **Why:** the Sackmann archive (D-007) already covers 2025 completely and 2026 to 2026-06-01, including Challengers
+  and qualifying, with native Sackmann ids. TML's GitHub copy is tour level only, has ATP codes and stops in
+  mid-January 2026, and 2000–2025 per-year counts agree with the archive to within 0–6 rows. Post-June-2026 data is
+  excluded by D-017. The generic `merge.py` and `match_names` stay ready if another source is approved.
+
+### D-024 (2026-11-16, Phase 2 re-audit) — Follow-ups from the PASS re-audit
+- **R1:** in Phase 5, check how much XGBoost relies on `height` (gain importance). If it ranks high, drop height from the
+  allow-list. The residual signal from the 185-cm fill measured as negligible out of sample (log loss 0.61522 vs 0.61519).
+- **R2:** `maybe_augment_train` keeps `split_name` optional, because test 11 calls it without one. With no split name
+  it guards only against the latest train_end. **Rule:** all model code must pass `split_name` and call
+  `assert_not_augmented` on every validation/test frame (test 14 covers the split-specific guard). The Phase 5 brief
+  will require it.
+- **R3:** cross-source ordering doesn't apply; no second source is merged (D-023).

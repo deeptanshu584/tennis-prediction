@@ -315,6 +315,12 @@ def run_final(cfg: Mapping[str, Any], split: str, *, df: pd.DataFrame | None = N
     if score and already_scored(cfg, split, exp_dir):
         raise RuntimeError(f"the {split} test has already been scored (experiments/{split}.jsonl has a test "
                            "record); the test set is evaluated once")
+    if score:  # audit phase7 note 1: a crash between saving predictions and logging must not allow a re-score
+        mdir = Path(model_dir) if model_dir is not None else repo_path(cfg["paths"]["models"])
+        prior = sorted(mdir.glob(f"xgb_{split}_final_*_test_predictions.csv")) if mdir.exists() else []
+        if prior:
+            raise RuntimeError(f"the {split} test was already scored ({prior[0].name} exists); the test set is "
+                               "evaluated once")
     parts = partitions(cfg, split, df=df, include_test=score)
     v = validate(cfg, split, parts, params)
     if frozen_n is not None and frozen_n != v["n_trees"]:

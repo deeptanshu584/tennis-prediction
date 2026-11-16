@@ -203,3 +203,36 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
 - Report: reports/forward_test_2026.md. No full-window accuracy is above 0.75.
 - Phase 8 prediction tool is in progress in parallel: final-state snapshot plus a production model on all data that is
   never evaluated.
+
+## 2026-11-16 — Phase 8: prediction tool done; final report drafted (uncommitted, waiting on Phase 7 audit)
+- Phase 6 and the Phase 7 scoring are committed as 13c7986. The full suite passed on a clean worktree: 444 passed.
+- Phase 8 agent (D-033):
+  - `engine/snapshot.py` (final state, `query_rows`), with a `build_features.run_pass` refactor that gives
+    bit-identical output;
+  - `model/predict.py` (single and `--draw` modes, symmetrised output, production model never evaluated);
+  - 25 new tests; `tests/engine` + `tests/model` gives 250 passed.
+- README.md rewritten end to end; reports/FINAL_REPORT.md drafted. AUDIT_VERDICT is a placeholder in section 3.
+- **EXACT NEXT STEPS (if interrupted):**
+  1. Wait for the Phase 7 auditor. It writes reports/audits/phase7.md and tests/leakage/test_20_*. Fix any FIX or
+     BLOCKER items. NEVER re-score a test.
+  2. Optionally add a `predict:` block to config (symmetrize, threads, production params) and wire predict.py to read
+     it.
+  3. Fill in AUDIT_VERDICT in FINAL_REPORT.md, run `pytest -q` (full), then commit Phase 7 (audit) and Phase 8.
+  4. 🛑 STOP: present FINAL_REPORT.md to the human.
+- **Added task (human):** PLAN.md section 12, reports/Project_Summary.pdf. Do it AFTER the Phase 8 commit and BEFORE
+  the 🛑 STOP presentation. Then give the human only its file path, plus the final summary.
+
+## 2026-11-16 — Phase 7: final leakage audit PASS ✅
+- reports/audits/phase7.md: PASS, no BLOCKER or FIX items.
+  - Each test was scored once after freezing (timeline from the logs).
+  - Refit windows end before the tests. An independent pre-test refit reproduces the scored probabilities to 2.9e-8.
+  - Every logged metric recomputes from the prediction CSVs.
+  - 4,902 recomputed forward-test feature values match.
+  - Roland Garros 72.9% is normal for a Slam: Elo alone averages 73.6% on Slams 2015–24.
+- New leakage test 20 (12 tests). Note 1 fixed: re-scoring is refused if prediction CSVs exist (D-034).
+- **Tests:** full suite in the main repo (with the Phase 8 code) **482 passed**.
+
+## 2026-11-16 — Phase 8: prediction tool + final report ✅
+- `python -m tennis.model.predict` (single and `--draw` modes), engine snapshot, production model (D-033).
+- README.md end to end; reports/FINAL_REPORT.md.
+- **Next:** PLAN section 12, reports/Project_Summary.pdf, then 🛑 STOP and present to the human.

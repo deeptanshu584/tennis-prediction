@@ -414,3 +414,59 @@ k ∈ {5, 10, 50}; retirements don't update Elo; Carpet → Hard; Davis Cup and 
    PROGRESS.md, and commit.
 4. After any phase that touches data, features, splits or models, run the **leakage-auditor** as a fresh agent before moving on.
 5. Continue phase by phase without waiting for the human, except at 🛑 STOP points.
+
+---
+
+## 12. Added task (human, 2026-11-16) — Project summary PDF
+**When:** only after Phase 8 is committed, and before presenting the final summary to the human (the Phase 8 🛑 STOP).
+Don't start it earlier, and don't change the current work for it.
+
+**TASK:** write `reports/Project_Summary.pdf`. It is a complete, plain-language PDF of the whole project, which the human
+will use to understand the project and to put it on a resume.
+
+Rules:
+- Use only real results from the repo (PROGRESS.md, DECISIONS.md, reports/, experiments/, config.yaml). Never invent
+  or round up a number. If a number is missing, leave it out.
+- Be honest about the limits:
+  - the shortened 2026 forward test and its small sample;
+  - the bookmaker figure of ~72% is a published number, not one we measured;
+  - the best of 800 tuning trials was chosen on validation data;
+  - the assumptions made (m in the K-factor, elo_grad, etc.).
+- Read-only on the repo. Write only to reports/. Don't edit src/, tests/ or config.
+- Build it with whatever works (markdown → PDF via pandoc, weasyprint or reportlab; install what is needed). Open the
+  finished PDF, check that the pages render properly (no cut-off tables or broken figures), and fix any problems.
+- Use charts already produced in reports/figures/ where they help.
+
+Contents, in this order:
+1. One-page overview: the problem, the approach, and the headline results in a small table.
+2. Data: sources, years, what each file contains, and the cleaning rules, including the data errors found and how
+   they were handled.
+3. Features: Elo (the formula, the dynamic K-factor, the layoff bonus) and every statistic, explained simply with
+   its formula.
+4. How data leakage is prevented: the one-chronological-pass design, the ordering rules, and each leakage test with
+   what it catches. Mention the original author's leakage mistake and how we avoid it.
+5. Models: baselines, Elo tuning, XGBoost, the search space, the best settings, feature importance.
+6. Evaluation: the split design, the Wimbledon 2025 replication, and the shortened 2026 forward test (overall and
+   Roland Garros), with confidence intervals and the comparison to the published figures (66.3%, 63.8%, ~72%).
+7. Engineering: repo structure, the agent team, parallel phases, and the test suite (counts).
+8. Limitations and what to do next.
+9. "Things I should know": about 12 likely interview questions about this project, each with a short, accurate
+   answer based on the actual work.
+9b. "What I did differently": a short section answering "How is your work different from the YouTube project you
+   replicated?"
+   - Base it only on real decisions in DECISIONS.md and the code. Include true differences only:
+     - leakage-safe design by construction, and its test suite;
+     - the independent auditor agent;
+     - Elo tuned on validation log loss rather than on test years;
+     - no tuning on any test period;
+     - a fixed-K versus dynamic-K comparison;
+     - confidence intervals on small test sets;
+     - anything else we really did differently.
+   - Give a 30-second spoken answer and a 2-minute detailed answer.
+10. Resume material:
+    - 3 to 5 bullet points, each starting with an action verb and holding one real number;
+    - a 2-line project description;
+    - a list of the technologies used.
+    Do not exaggerate.
+
+Keep it readable: about 8 to 12 pages. When it's done, give the human the file path and nothing else about it.

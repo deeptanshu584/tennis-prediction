@@ -262,3 +262,15 @@ def test_forward_tuning_logs_trials_without_test_metrics(synth_features, cfg) ->
     assert p == best["params"] and n == best["best_iteration"] + 1 and "not yet frozen" in src
     with pytest.raises(ValueError, match="n_trials_forward"):
         ef.tune_forward(cfg, df=synth_features, n_trials=4, workers=1)
+
+
+def test_rescoring_refused_when_predictions_exist_without_a_log_record(synth_features, cfg) -> None:
+    """Audit phase7 note 1: a crash after saving the test predictions but before logging must not allow a re-score."""
+    c = _frozen(cfg, synth_features, "replication")
+    mdir = Path(c["paths"]["models"])
+    mdir.mkdir(parents=True, exist_ok=True)
+    (mdir / "xgb_replication_final_deadbeef0000_test_predictions.csv").write_text("match_id\n", encoding="utf-8")
+    assert not (Path(c["paths"]["experiments"]) / "replication.jsonl").exists()
+    with pytest.raises(RuntimeError, match="already scored"):
+        ef.run_final(c, "replication", df=synth_features, score=True, write=False)
+    assert not (Path(c["paths"]["experiments"]) / "replication.jsonl").exists()

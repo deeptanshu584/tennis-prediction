@@ -342,3 +342,41 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   `flip_augment_train` is false.
 - **Freeze:** both keys were added together before either test was scored, so both test records carry one frozen
   config hash. Each test is scored once (`evaluate_final --score-test`), which refuses a second scoring.
+
+### D-033 (2026-11-16, Phase 8) — Prediction tool
+- **State:** `engine.snapshot.build_state` runs the same chronological pass as `build_features` (`run_pass`,
+  refactored with bit-identical output, verified on the full table). `query_rows` builds rows from the final state
+  without updating it, so every query in a draw sees the same state. Consistency gate (tests/engine/test_snapshot.py):
+  on first-round matches, synthetic and real (Roland Garros, Geneva and Hamburg 2026), query rows equal the engine
+  rows to 1e-9.
+- **Query-time static attributes:** rank and rank points are the last known values; age is projected forward; players
+  with no prior row get the D-020 fills; overrides are allowed per query. `--date` is the tournament start date,
+  defaulting to the day after the cut-off. Earlier dates are refused.
+- **Production model:** `forward_best_params`, 393 fixed trees, fitted on all 76,421 rows (2000 → 2026-05-25), allow-list
+  only. It is never evaluated (meta `never_evaluated: true`). Its training data includes the forward test window,
+  which is fine because no metric is computed with it.
+- **Symmetrised output:** p = (p(A,B) + 1 − p(B,A)) / 2, so swapping players gives exactly 1 − p. Without flip
+  augmentation, XGBoost isn't orientation-symmetric: for Sinner–Alcaraz on grass, the two orientations give 0.52 and
+  0.70. The evaluated models scored one coin-flip orientation, so this output is a slightly different estimator. It
+  is disclosed, and the raw values are kept in the draw CSV. Next idea: evaluate flip augmentation or symmetrised
+  scoring on validation.
+- **Names:** full name or id, ignoring case and accents, using the most recent spelling. A bare surname or an
+  ambiguous name is an error that lists candidates, never a guess.
+- **Cache:** `models/state_<config_hash>.pkl`. It is invalidated by the config hash, a format version, a hash of the
+  engine source, and the matches file's size/mtime.
+
+### D-034 (2026-11-16, Phase 7 final audit) — PASS; follow-ups to the notes
+- **Verdict:** PASS, no leak (reports/audits/phase7.md). Leakage suite 96 passed; full suite 456 passed (clean
+  worktree). New test 20 (12 tests) pins exactly one frozen test record per final split, and checks that the CSVs equal
+  the test partitions, the metrics recompute, and a pre-test refit reproduces the scored models.
+- **Note 1 (fixed):** `evaluate_final.run_final(score=True)` also refuses if a `xgb_<split>_final_*_test_predictions.csv`
+  exists. Without this, a crash between saving the predictions and logging would allow a silent re-score. One unit test
+  was added.
+- **Note 3 (left as is):** the Parma CH 2020 F walkover/played twin survives D-009 de-duplication, because the key
+  includes the score. It is harmless: walkovers are skipped everywhere, and it is a Challenger, never a feature row.
+  Fixing it would change matches.parquet after the tests were scored, for no model effect.
+- **Note 4:** the Phase 8 engine refactor is covered by leakage tests 01, 02 and 13 in the main-repo full run before
+  the Phase 8 commit.
+- **Predict settings stay in code, not config:** `DAYS_PER_YEAR` (a calendar constant), the thread default and
+  "symmetrise" are fixed design choices of the tool (D-033), not tunable model settings. Adding them to config would
+  change the config hash away from the one stamped on both test records (3c3f2599a311) for no model change.

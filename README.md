@@ -24,7 +24,7 @@ Put the raw files under `data/raw/`. This folder is never committed, and nothing
 | What | Where (config key) |
 |---|---|
 | Jeff Sackmann `tennis_atp` CSVs (`atp_matches_YYYY.csv`, `atp_matches_qual_chall_YYYY.csv`, `atp_players.csv`) | `paths.sackmann_dir` |
-| TML-Database CSVs (2025–2026 cross-check) | `paths.tml_dir` |
+| Optional: TML-Database CSVs (row-count cross-check only; not ingested, D-023) | `paths.tml_dir` |
 | Optional: tennis-data.co.uk odds files, for a bookmaker baseline | `paths.odds_dir` |
 
 ## Run end to end
@@ -73,6 +73,6 @@ Audit reports are in `reports/audits/`.
 ## Data and licence
 Match data comes from Jeff Sackmann's [`tennis_atp`](https://github.com/JeffSackmann/tennis_atp), licensed
 **CC BY-NC-SA 4.0**: non-commercial use only, attribution required, share-alike. Results derived from it inherit
-those terms, including this project's models and reports. 2025–2026 data comes from the
-[TML-Database](https://github.com/Tennismylife/TML-Database). No betting-odds data is used (DECISIONS D-029), and raw
+those terms, including this project's models and reports. The Sackmann archive covers 1990 to June 2026; the
+[TML-Database](https://github.com/Tennismylife/TML-Database) was used only to cross-check row counts. No betting-odds data is used (DECISIONS D-029), and raw
 data is never committed to this repository.

@@ -28,7 +28,7 @@ Written for: the project owner and anyone reading the repository. Details live i
 | Source | Coverage | Use |
 |---|---|---|
 | Jeff Sackmann `tennis_atp` (archive copy, D-007) | 1990 → Roland Garros 2026 | All matches: tour level, Challengers and qualifying |
-| TML-Database | 2025–2026 | Cross-check: agrees with the archive within 0–6 rows per year |
+| TML-Database | 2000 → mid-January 2026 (tour level) | Cross-check only, never ingested (D-023): tour-level counts per year agree with the archive within 0–6 rows |
 | Betting odds | — | Not used. tennis-data.co.uk opts out of AI agents (D-025); human decision D-029 |
 
 - **Unified table:** 337,663 matches (walkovers dropped; Laver Cup excluded; conflicting duplicate pairs dropped,

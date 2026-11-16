@@ -236,3 +236,10 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
 - `python -m tennis.model.predict` (single and `--draw` modes), engine snapshot, production model (D-033).
 - README.md end to end; reports/FINAL_REPORT.md.
 - **Next:** PLAN section 12, reports/Project_Summary.pdf, then 🛑 STOP and present to the human.
+
+## 2026-11-16 — PLAN section 12: project summary PDF ✅
+- reports/Project_Summary.pdf: 11 pages, built from repo facts only (Markdown → HTML → headless Edge PDF). Every page
+  was rendered and checked: no cut-off tables or broken figures.
+- Corrected the TML-Database wording in README.md and FINAL_REPORT.md. TML was a row-count cross-check only, never
+  ingested (D-023).
+- **Tests:** 482 passed. **Next:** 🛑 STOP and present the final report to the human.

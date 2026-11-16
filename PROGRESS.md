@@ -153,3 +153,53 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
   - The 0.012 gain over the blend is real: ~0.010 survives without selection on 2023–24.
   - 3,080 of 3,080 feature values recomputed from earlier matches agree.
 - **Tests:** full suite **444 passed** (9.4 min).
+
+## 2026-11-16 — Phases 6–7: frozen settings; test scoring in progress
+- Frozen in config (D-032, hash 3c3f2599a311):
+  - replication: 405 fixed trees on train+val with `best_params`;
+  - forward: `forward_best_params` from trial 253/300 on 2026 Q1, 393 trees.
+- Validation:
+  - replication 2025-01..06 (n = 1,493): XGB 0.6932 / 0.5857 vs blend 0.6792 / 0.5986;
+  - forward 2026 Q1 (n = 932): XGB 0.6867 / 0.5856 vs blend 0.6701 / 0.5998.
+- The ml-engineer agent hit the usage limit before scoring. Verified that no test set had been scored: no
+  replication.jsonl or forward.jsonl, the reports say "Not scored yet", and no --score-test command ran.
+- **EXACT NEXT STEPS (if interrupted):**
+  1. Check `experiments/replication.jsonl` and `experiments/forward.jsonl`. Any that exist were scored ONCE, so
+     never re-run them. Score only a missing one, with the frozen config:
+     `.venv/Scripts/python -m tennis.model.evaluate_final --split replication|forward --score-test`.
+  2. Finalize reports/replication_wimbledon_2025.md and forward_test_2026.md: CIs, Roland Garros separately,
+     small-sample note, D-028/D-029/D-031 notes.
+  3. Run `pytest -q`, then commit Phase 6 and Phase 7 code, reports and experiments.
+  4. Phase 7 final full-repo leakage audit (auditor agent) → fix any FIX items → commit.
+  5. Phase 8: write `src/tennis/model/predict.py` (CLI), README.md and reports/FINAL_REPORT.md → pytest → commit →
+     🛑 STOP and present the final report to the human.
+
+## 2026-11-16 — Phase 6: Wimbledon 2025 replication ✅ (scored once, frozen config 3c3f2599a311)
+- Code: `evaluate_final.py` (CLI `--split replication|forward [--tune] [--score-test]`; refuses a second scoring) and
+  `train.refit_fixed` (fixed trees, no eval set, date/match_id guards). 14 new tests.
+- The agent stopped once at the usage limit before scoring. It was resumed and scored each test exactly once.
+- **Wimbledon 2025 (n = 122; accuracy CI ±8.2 pt):**
+
+  | Model | Acc [95% CI] | Log loss | Brier |
+  |---|---|---|---|
+  | XGBoost | 0.6557 [0.574, 0.738] | 0.6162 | 0.2134 |
+  | Elo | 0.6967 | 0.6139 | 0.2119 |
+  | Blend | 0.6475 | 0.6041 | 0.2105 |
+  | Rank logistic | 0.6639 | 0.6184 | 0.2137 |
+
+  - Every paired difference's CI includes 0 (vs blend +0.012 [−0.023, +0.049]). XGBoost matches the author's 66.3%
+    and beats IBM's 63.8%. Bookmakers ~72% is quoted only (D-029).
+  - Report: reports/replication_wimbledon_2025.md.
+
+## 2026-11-16 — Phase 7: forward test scored once (final audit pending)
+- Re-tune: 300 trials on 2026 Q1, best trial 253 (393 trees).
+- **Test 2026-04-01..06-07 (n = 473, all clay; accuracy CI ±4.2 pt):**
+  - XGBoost 0.6765 [0.634, 0.719], log loss 0.5920.
+  - Elo 0.6702 / 0.6050; blend 0.6681 / 0.6069; rank logistic 0.6342 / 0.6308.
+  - Paired Δ log loss: vs blend −0.0149 [−0.0301, −0.0002] (just significant); vs Elo −0.0130 [−0.035, +0.009].
+  - ECE: XGBoost 0.031, Elo 0.041.
+- **Roland Garros 2026 (n = 118):** XGBoost 0.7288 [0.653, 0.805], log loss 0.5958, against Elo 0.6610 / 0.6179. Every
+  paired CI includes 0.
+- Report: reports/forward_test_2026.md. No full-window accuracy is above 0.75.
+- Phase 8 prediction tool is in progress in parallel: final-state snapshot plus a production model on all data that is
+  never evaluated.

@@ -147,6 +147,20 @@ xgb:
     reg_alpha: 0.06810140421533839
     reg_lambda: 3.0385256550684665
     n_estimators: 689              # trees at the dev early-stopping point (best_iteration + 1)
+  # Phase 6 (D-032): trees for the replication refit on train+val = best_iteration + 1 of the replication
+  # validation run with best_params (early stopping on 2025-01-01..06-29). Dev alternative: 689.
+  replication_n_estimators: 405
+  # Phase 7 re-tune (D-032): trial 253 of 300 on the forward val window 2026-01-01..03-31.
+  forward_best_params:
+    learning_rate: 0.02911925972933801
+    max_depth: 7
+    min_child_weight: 2.4281814628569753
+    subsample: 0.7764105185629614
+    colsample_bytree: 0.5174062612828937
+    gamma: 0.9969095174994491
+    reg_alpha: 7.8743942865995065
+    reg_lambda: 1.059396019764119
+    n_estimators: 393              # best_iteration + 1
   search_space:
     learning_rate: [0.01, 0.1]     # log-uniform
     max_depth: [3, 8]

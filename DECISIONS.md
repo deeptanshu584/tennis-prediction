@@ -327,3 +327,18 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   - 35% of the gain is in best-of-5 matches. Unranked players (n = 92) win 19% against an Elo-implied 39%; this is
     real, since rank presence is fixed per player per tournament.
   - Recomputing 3,080 feature values for 55 validation matches from strictly earlier matches matched every one.
+
+### D-032 (2026-11-16, Phases 6–7) — Frozen settings before the single test scoring
+- **Replication tree count:** 405 = best_iteration + 1 of the replication validation run, using the full-precision
+  `best_params` with early stopping on 2025-01-01..06-29. The final model is refit on train+val with 405 fixed trees
+  and no eval set (D-028).
+  - **Why:** this tree count comes from the training size closest to the refit, and it is the same rule as Phase 7.
+  - **Alternative:** the dev count of 689, which is mentioned in the report and not used.
+  - This supersedes the "Phase 6 uses 689" line in D-030.
+- **Forward params:** trial 253 of 300 (Optuna TPE) on the 2026 Q1 validation window, 393 trees, frozen as
+  `xgb.forward_best_params` at full precision. gamma (0.997) sits near the top of its [0, 1] range. We don't
+  re-search: the dev surface was flat and the validation window is small (n = 932).
+- **Validation-window rows in the refit are not flip-augmented:** the D-021 guard forbids it. No effect while
+  `flip_augment_train` is false.
+- **Freeze:** both keys were added together before either test was scored, so both test records carry one frozen
+  config hash. Each test is scored once (`evaluate_final --score-test`), which refuses a second scoring.

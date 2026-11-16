@@ -260,3 +260,21 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   scoring, since the metrics are symmetric). Edge probes are diagnostic only. Surface Elo is keyed by (player, surface),
   with Ne on that surface and the same in-event m and layoff list. The harness is bit-identical to the engine
   (tested on synthetic and real data).
+
+### D-028 (2026-11-16, Phase 5 audit part 1) — Fixes and disclosures
+- **Finding 1 (fixed):** `dataset.is_banned` now also catches `w_`/`l_` behind one `a_`/`b_`/`d_` player prefix
+  (e.g. `a_w_ace`). It uses a prefix check, not a substring check, so `level_A` isn't banned. No allow-listed feature
+  was affected. New auditor test 18 passes; tests 15–17 (test-window pinning, experiment-log hygiene, Elo tuning
+  window) were added and pass.
+- **Finding 2 (disclosure, rule 6):** Elo-only accuracy for the FULL 2025 and 2026 seasons (63.71% / 64.91%, untuned
+  default Elo) appeared in reports/audits/phase2.md and in the "2000–2026 maximum" line of PROGRESS.md. Those seasons
+  contain Wimbledon 2025 and the forward test window. Nothing was selected on them: Phase 4 used 2015–2024 only, as
+  test 17 verifies. Phase 6/7 reports must disclose this. **Rule from now:** sanity checks before Phases 6/7 use
+  seasons ≤ 2024 or the validation windows only.
+- **Finding 3 (note):** re-selecting Elo on 2015–2022 only gives the same overall setting (no inflation of 2023–24) and
+  a different surface setting (≈ 0.0012 log loss, 0.3 pt accuracy optimism on 2023–24). The bias hits all Elo-based
+  baselines and XGBoost alike, and the tests are unaffected (tuning ends 2024-12-31).
+- **Phase 6/7 retrain rule (auditor checklist):** refit on train+val with a fixed number of trees (`best_iteration + 1`
+  from dev validation) and no early-stopping set. The test is never passed as `val_df`. Assert max(refit date) ≤
+  `val_end` and no shared match_id with the test. Always pass `split_name`. Score the test once and log it with a
+  single config hash under a `test` key.

@@ -25,10 +25,20 @@ NON_FEATURES: frozenset[str] = frozenset({
 PROB_COLUMNS: tuple[str, ...] = ("elo_prob_a", "elo_surface_prob_a")
 
 
+PLAYER_PREFIXES: tuple[str, ...] = ("a_", "b_", "d_")
+
+
 def is_banned(name: str) -> bool:
-    """True for same-match columns (``w_``/``l_`` prefix; winner/loser/score/minutes) and non-feature columns."""
+    """True for same-match columns (``w_``/``l_`` prefix, also behind one ``a_``/``b_``/``d_`` player prefix, e.g.
+    ``a_w_ace``; winner/loser/score/minutes substrings) and non-feature columns.
+
+    The ``w_``/``l_`` check is a prefix check on the name with one player prefix stripped. A plain substring check
+    would wrongly ban e.g. ``level_A`` (audit phase5 finding 1).
+    """
     low = name.lower()
-    return (low.startswith(BANNED_PREFIXES) or any(s in low for s in BANNED_SUBSTRINGS)
+    core = low[2:] if low.startswith(PLAYER_PREFIXES) else low
+    return (low.startswith(BANNED_PREFIXES) or core.startswith(BANNED_PREFIXES)
+            or any(s in low for s in BANNED_SUBSTRINGS)
             or name in NON_FEATURES or low.endswith("_id") or low.endswith("_name"))
 
 

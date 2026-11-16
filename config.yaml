@@ -134,6 +134,19 @@ xgb:
   n_trials: 800
   n_trials_forward: 300
   max_n_estimators: 2000
+  tree_method: hist
+  nthread: 1                       # pinned: hist results change with the thread count (D-030); = train.NTHREAD
+  # Tuned in Phase 5 (reports/xgb_tuning.md, D-030): best of 800 Optuna trials on dev val 2023-24 (trial 720).
+  best_params:
+    learning_rate: 0.017403824245571284
+    max_depth: 7
+    min_child_weight: 3.7070046985199285
+    subsample: 0.7246419405377439
+    colsample_bytree: 0.5151019491450788
+    gamma: 0.1045539002555385
+    reg_alpha: 0.06810140421533839
+    reg_lambda: 3.0385256550684665
+    n_estimators: 689              # trees at the dev early-stopping point (best_iteration + 1)
   search_space:
     learning_rate: [0.01, 0.1]     # log-uniform
     max_depth: [3, 8]

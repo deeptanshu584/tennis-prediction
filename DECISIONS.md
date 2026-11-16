@@ -278,3 +278,52 @@ Judgement calls made while executing PLAN.md. Format: decision · alternatives �
   from dev validation) and no early-stopping set. The test is never passed as `val_df`. Assert max(refit date) ≤
   `val_end` and no shared match_id with the test. Always pass `split_name`. Score the test once and log it with a
   single config hash under a `test` key.
+
+### D-029 (2026-11-16, human decision) — Bookmaker baseline: quoted figure, no odds data
+- **Decision (human, option b):** no betting-odds data is used. Phase 6/7 reports quote the published bookmaker
+  figure (~72% on Wimbledon 2025, PLAN.md reference points) as an external reference only. It is not computed on our
+  test rows, so it is not a like-for-like comparison and has no CI.
+- **Why:** tennis-data.co.uk's robots.txt opts out of AI agents (D-025), and we don't bypass that. The human chose not
+  to download the files by hand.
+- **Alternatives:** (a) the human downloads 2015–2025 odds into `data/raw/odds/`; (c) another source.
+- **Kept in place:** `src/tennis/ingest/odds.py` and its 30 tests. If odds files ever appear in `data/raw/odds/`,
+  re-running the Phase 6/7 evaluation adds a computed bookmaker row. There is no 2026 forward-test bookmaker baseline
+  until then.
+
+### D-030 (2026-11-16, Phase 5) — XGBoost tuning choices
+- **Best params:** trial 720 of 800 (Optuna TPE, seed 42), written to `xgb.best_params` in config.yaml with
+  `n_estimators: 689` (best_iteration + 1 at the dev early-stopping point). Dev val 2023–24: accuracy 0.6672, log loss
+  0.5936, against 0.6099 for Elo and 0.6056 for the blend. The paired-bootstrap CIs exclude 0 for both.
+- **Early stopping and selection on the same window:** both use dev val 2023–24, so the dev metrics are slightly
+  optimistic. The search surface is flat (0.5936–0.5971 across all 800 trials), so selection bias is small. Phases 6/7
+  give the honest numbers.
+- **Threads:** `nthread = 1` for every trial and refit (`xgb.nthread`), and `tree_method: hist` (`xgb.tree_method`).
+  hist results depend on the thread count. Trials ran asynchronously on 8 processes, each with BLAS threads pinned to 1
+  (11 workers ran out of memory). Each trial is bit-reproducible; the trial sequence is reproducible only with 1 worker.
+- **Missing values:** NaN goes to XGBoost's native missing-value handling. Nothing learned outside the booster (rule 10).
+- **Height (D-024 R1):** the height features rank 71–93 of 106 by gain, so they are kept.
+- **Calibration:** ECE is 0.023 for XGBoost, 0.019 for Elo. No calibrator; revisit only if the Phase 7 validation
+  shows drift.
+- **Phase 6/7 tree count:** refit on train+val with a fixed number of trees and no early-stopping set (D-028 rule).
+  - Phase 6 uses `n_estimators = 689` from dev.
+  - Phase 7 re-tunes (≤ 300 trials) with early stopping on 2026 Q1, then refits on train+val with that run's
+    best_iteration + 1.
+
+### D-031 (2026-11-16, Phase 5 audit final pass) — Fixes; the gain over the blend is real
+- **Verdict:** no leak found. Two FIX items were applied, after which test 19 passes.
+- **F1 (fixed):** `xgb.best_params` had been written to 6 significant figures, which trains a different model
+  (best_iteration 518, not 688). Config now holds the exact trial-720 values, and `tune._yaml_params` writes
+  `repr(float(v))`. Forward params must be full precision too.
+- **F2 (fixed):** `train.fit_xgb` raises if any early-stopping row lies outside `splits[split_name]` val_start..val_end.
+  So the test can never be an early-stopping set.
+- **F3 (note):** the report's shuffled-label run stopped after 1 tree. Test 19 re-does it with 689 fixed trees and no
+  eval set: 0.5084, inside [0.47, 0.53].
+- **F4 (fixed):** `native_params` raises if `xgb.nthread` != `train.NTHREAD`.
+- **F5 (note):** the dev model carries the tuning-time config hash. Phase 6/7 models are saved under the frozen hash.
+- **Gain over the blend (−0.0120 log loss, above the 0.01 second-look line):**
+  - About −0.010 survives a protocol with no early stopping on 2023–24, so roughly 0.002 is selection optimism.
+  - Serve/return stats add only about 0.0017. Most of the gain is Elo adjusted by format, level, experience, form and
+    rest.
+  - 35% of the gain is in best-of-5 matches. Unranked players (n = 92) win 19% against an Elo-implied 39%; this is
+    real, since rank presence is fixed per player per tournament.
+  - Recomputing 3,080 feature values for 55 validation matches from strictly earlier matches matched every one.

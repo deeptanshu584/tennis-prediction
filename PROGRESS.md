@@ -124,3 +124,32 @@ Committed as `def6147`. **Re-audit: PASS** (reports/audits/phase2.md). Leakage s
 - Reports: reports/elo_tuning.md, reports/baselines.md (regenerated), reports/figures/phase4_*.png.
 - **Tests:** full suite 379 passed + 3 engine unit tests that had hard-coded the old default K. Those now pin their
   own Elo settings and pass (132/132 engine tests). Leakage tests 1–2 pass on the regenerated features.
+
+## 2026-11-16 — Phase 5: XGBoost tuning ✅
+- **Audit part 1** (reports/audits/phase5.md): `is_banned` fixed (D-028); leakage tests 15–18 added; committed 6919e78.
+- **ml-engineer:** `train.py` (`fit_xgb`, allow-list only, augmentation guard, NaN native) and `tune.py` (Optuna TPE,
+  8 processes × 1 thread, alarm check after every trial). 18 new tests.
+- **800/800 trials** in 77 min on dev (train 2000–2022, val 2023–24). The surface is flat: log loss 0.5936–0.5971.
+  Best is trial 720 → `xgb.best_params` (n_estimators 689), D-030.
+- **Dev val 2023–24 (n = 5,928), 95% CIs:**
+
+  | Model | Acc | Log loss | Brier |
+  |---|---|---|---|
+  | **XGBoost** | **0.6672** [0.6557, 0.6791] | **0.5936** [0.5831, 0.6048] | **0.2050** |
+  | Elo | 0.6553 | 0.6099 | 0.2118 |
+  | 50/50 blend | 0.6565 | 0.6056 | 0.2102 |
+  | Rank logistic | 0.6385 | 0.6297 | 0.2202 |
+
+  Paired Δ log loss vs blend: −0.0120 [−0.0163, −0.0075]. Shuffled labels give acc 0.489 (PASS). ECE 0.023.
+  Height ranks 71–93 of 106, so it is kept (D-024 R1). Top features: d_elo, elo_prob_a, elo_surface_prob_a,
+  d_elo_surface, d_dominance_ratio.
+- **Odds:** human chose option (b), D-029. The ~72% bookmaker figure is quoted externally; the parser is kept.
+- **Tests:** 422 passed (ml-engineer run, before the config edit). Final pytest at commit.
+- **In flight:** the leakage auditor's final pass on train/tune, including a second look at the 0.012 gain over the
+  blend. In parallel, the ml-engineer writes the Phase 6/7 code and runs the validation-only forward re-tune. Tests
+  are not scored until the audit passes.
+- **Audit final pass** (reports/audits/phase5.md): no leak found. F1 (rounded params) and F2 (val-window guard in
+  `fit_xgb`) are fixed, as is F4 (nthread check); see D-031. New leakage test 19 (8 tests) passes.
+  - The 0.012 gain over the blend is real: ~0.010 survives without selection on 2023–24.
+  - 3,080 of 3,080 feature values recomputed from earlier matches agree.
+- **Tests:** full suite **444 passed** (9.4 min).

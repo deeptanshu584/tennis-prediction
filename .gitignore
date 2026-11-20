@@ -1,10 +1,31 @@
-# data and artefacts (never commit)
+# --- data (never commit; see README "Getting the data") ---
 /data/
-/models/
-/.venv/
-venv/
+data/raw/
+data/interim/
+data/processed/
+*.parquet
+*.xlsx
+*.xls
+# large CSVs: ignore all CSVs except the small hand-edited config file and the test fixtures
+*.csv
+!config/player_overrides.csv
+!tests/data/fixtures/**/*.csv
 
-# python
+# --- model artifacts ---
+/models/
+*.pkl
+*.pickle
+*.joblib
+*.ubj
+models/*.json
+
+# --- environments and secrets ---
+.venv/
+venv/
+.env
+.env.*
+
+# --- python ---
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -13,8 +34,9 @@ __pycache__/
 build/
 dist/
 
-# os / editors
+# --- os / editors ---
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+.claude/settings.local.json

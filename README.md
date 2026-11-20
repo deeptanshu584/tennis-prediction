@@ -27,6 +27,29 @@ Put the raw files under `data/raw/`. This folder is never committed, and nothing
 | Optional: TML-Database CSVs (row-count cross-check only; not ingested, D-023) | `paths.tml_dir` |
 | Optional: tennis-data.co.uk odds files, for a bookmaker baseline | `paths.odds_dir` |
 
+### Getting the data
+The raw match data comes from **Jeff Sackmann's [`tennis_atp`](https://github.com/JeffSackmann/tennis_atp)** dataset
+(CC BY-NC-SA 4.0). None of it is in this repository.
+
+**Option 1: the upstream repository.** Clone it into `data/raw/tennis_atp` and point `paths.sackmann_dir` in
+`config.yaml` at that folder:
+```bash
+git clone --depth 1 https://github.com/JeffSackmann/tennis_atp data/raw/tennis_atp
+# config.yaml → paths: sackmann_dir: data/raw/tennis_atp
+```
+
+**Option 2: the archive mirror.** This is what the project's results used: the upstream repository returned 404 on
+2026-11-16 (DECISIONS D-007), so we used an archive copy, `tennis-sackmann-archive` (also on Hugging Face as
+`Aneeshers/tennis-sackmann-archive`). Unpack it so the CSVs end up at the path `config.yaml` already expects:
+```
+data/raw/tennis_atp/tennis-sackmann-archive-main/atp/atp_matches_1990.csv … atp_matches_2026.csv
+                                                      atp_matches_qual_chall_1990.csv … _2026.csv
+                                                      atp_players.csv
+```
+
+Then run `python -m tennis.ingest.merge` (see below). The reported results cover 1990 to early June 2026. A different
+snapshot will give slightly different numbers.
+
 ## Run end to end
 ```bash
 PY=.venv/Scripts/python
